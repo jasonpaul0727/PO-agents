@@ -208,3 +208,37 @@ Three buttons are enough to demonstrate the full range of outcomes.
 | **1. Valid PO** | Complete, correct PO | `Ready to Submit` |
 | **2. Missing Customer** | PO with no customer | `Needs Review` |
 | **3. Unknown Item** | PO referencing an unknown item | `Item Not Found` |
+
+---
+
+## Development (MVP)
+
+> **Scope:** This MVP is **PDF-only**. Email-text input listed above is future work — the pipeline currently accepts a PDF upload and nothing else.
+
+### Setup
+```bash
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env   # set ANTHROPIC_API_KEY
+python tests/make_sample_pdfs.py
+```
+
+### Run
+```bash
+uvicorn backend.app:app --reload
+# open http://localhost:8000
+```
+
+### Test
+```bash
+pytest -q
+```
+
+### Demo scenarios
+| Sample PDF | Result |
+|---|---|
+| `samples/valid.pdf` | `ready_to_submit` |
+| `samples/missing_customer.pdf` | `needs_review` (MISSING_CUSTOMER) |
+| `samples/unknown_item.pdf` | `needs_review` (UNKNOWN_ITEM / Not found) |
+
+Pipeline: Intake (pdfplumber) → Extraction (Claude `messages.parse`) → Validation → Exception → Draft. Only Extraction calls Claude. The Repository (SQLite + seed JSON) is a replaceable interface for a real ERP/WMS later. Full design: `docs/superpowers/specs/2026-06-19-po-intake-agent-design.md`.
