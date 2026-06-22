@@ -1,8 +1,12 @@
 import os
 
+from pathlib import Path
+
 import anthropic
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend import pipeline
 from backend.agents import draft, validation
@@ -15,6 +19,14 @@ load_dotenv()
 
 app = FastAPI(title="PO Intake Agent")
 repo = Repository(db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed"))
+
+FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
+app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
+
+
+@app.get("/")
+def index():
+    return FileResponse(str(FRONTEND / "index.html"))
 
 
 def get_client():
