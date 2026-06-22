@@ -1,0 +1,7 @@
+PURCHASE ORDER
+PO Number: PO-1002
+Ship To: 456 Oak Ave
+Requested Date: 2026-07-02
+
+Item        Qty   Unit Price
+ITEM-1001   50    2.00

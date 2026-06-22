@@ -1,0 +1,7 @@
+PURCHASE ORDER
+Customer: Globex
+PO Number: PO-1003
+Ship To: 789 Pine Rd
+
+Item        Qty   Unit Price
+ITEM-9999   10    9.00
