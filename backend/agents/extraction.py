@@ -1,0 +1,33 @@
+import os
+
+from backend.models import ExtractedPO
+
+SYSTEM_PROMPT = (
+    "Extract only what is present in the purchase order. "
+    "Do not invent missing fields — set them to null. "
+    "Fill item_number, order_quantity, and unit_price for each line item."
+)
+
+MAX_ATTEMPTS = 3  # initial + 2 retries
+
+
+class ExtractionError(Exception):
+    """Raised when the extraction call fails after all retries."""
+
+
+def extract_po(text: str, client) -> ExtractedPO:
+    model = os.getenv("PO_MODEL", "claude-opus-4-8")
+    last_err: Exception | None = None
+    for _ in range(MAX_ATTEMPTS):
+        try:
+            response = client.messages.parse(
+                model=model,
+                max_tokens=2048,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": text}],
+                output_format=ExtractedPO,
+            )
+            return response.parsed_output
+        except Exception as e:  # noqa: BLE001 — retry any call failure
+            last_err = e
+    raise ExtractionError(f"Extraction failed after {MAX_ATTEMPTS} attempts: {last_err}")
