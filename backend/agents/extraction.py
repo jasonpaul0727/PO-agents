@@ -1,6 +1,6 @@
 import os
 
-from backend.models import ExtractedPO
+from backend.models import ExtractedDocument, ExtractedPO, LineItem
 
 SYSTEM_PROMPT = (
     "Extract only what is present in the purchase order. "
@@ -15,6 +15,22 @@ class ExtractionError(Exception):
     """Raised when the extraction call fails after all retries."""
 
 
+def _to_extracted_po(doc: ExtractedDocument) -> ExtractedPO:
+    """Map the slim extraction schema onto the full ExtractedPO. The extra
+    LineItem fields keep their defaults and are populated by later agents."""
+    return ExtractedPO(
+        header=doc.header,
+        line_items=[
+            LineItem(
+                item_number=li.item_number,
+                order_quantity=li.order_quantity,
+                unit_price=li.unit_price,
+            )
+            for li in doc.line_items
+        ],
+    )
+
+
 def extract_po(text: str, client) -> ExtractedPO:
     model = os.getenv("PO_MODEL", "claude-opus-4-8")
     last_err: Exception | None = None
@@ -25,9 +41,9 @@ def extract_po(text: str, client) -> ExtractedPO:
                 max_tokens=2048,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": text}],
-                output_format=ExtractedPO,
+                output_format=ExtractedDocument,
             )
-            return response.parsed_output
+            return _to_extracted_po(response.parsed_output)
         except Exception as e:  # noqa: BLE001 — retry any call failure
             last_err = e
     raise ExtractionError(f"Extraction failed after {MAX_ATTEMPTS} attempts: {last_err}")

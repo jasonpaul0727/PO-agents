@@ -35,6 +35,25 @@ class ExtractedPO(BaseModel):
     line_items: list[LineItem]
 
 
+class ExtractedLineItem(BaseModel):
+    """Slim line item the LLM actually reads off the PO. The remaining LineItem
+    fields are derived/backfilled by later agents, so they are kept out of the
+    extraction schema."""
+
+    item_number: str
+    order_quantity: int
+    unit_price: float | None = None
+
+
+class ExtractedDocument(BaseModel):
+    """`output_format` for `messages.parse`. Deliberately minimal so the
+    constrained-decoding grammar compiles fast — the full ExtractedPO/LineItem
+    schema intermittently triggers 'Grammar compilation timed out'."""
+
+    header: POHeader
+    line_items: list[ExtractedLineItem]
+
+
 class Issue(BaseModel):
     severity: Literal["error", "warning"]
     code: str
