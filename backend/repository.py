@@ -14,7 +14,10 @@ class Repository:
     """Master data + submitted-PO registry. Swap this class for a real ERP/WMS adapter later."""
 
     def __init__(self, db_path: str = ":memory:", seed_dir: str | None = None):
-        self.conn = sqlite3.connect(db_path)
+        # check_same_thread=False: FastAPI serves requests from a threadpool, so the
+        # connection (created at import time) is reused across threads. Safe here — access
+        # is serialized and writes are tiny single-row registry inserts.
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self._init_schema()
         if seed_dir:
             self._load_seed(seed_dir)
