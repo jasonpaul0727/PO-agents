@@ -7,17 +7,15 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header><h1>PO Intake Agent</h1></header>
+  <header>
+    <h1>PO Intake Agent</h1>
+    <button id="workflow-toggle" class="drawer-toggle" type="button" aria-controls="workflow-drawer" aria-expanded="false">Agent Workflow ▸</button>
+  </header>
   <main class="cols">
     <section class="col" id="col-pdf">
       <h2>Original PO</h2>
       <input type="file" id="pdf-input" accept="application/pdf" />
       <iframe id="pdf-preview" title="PDF preview"></iframe>
-    </section>
-
-    <section class="col" id="col-steps">
-      <h2>Agent Workflow</h2>
-      <ol id="steps"></ol>
     </section>
 
     <section class="col" id="col-draft">
@@ -31,7 +29,6 @@
           <label>Ship Date <input name="ship_date" /></label>
           <label>Carrier <input name="carrier" /></label>
         </div>
-        <div id="items"></div>
         <div class="order-total">Order Total: <span id="order-total">—</span></div>
         <label>Order note <input name="order_note" /></label>
         <div class="status">Status: <span id="status">—</span></div>
@@ -42,7 +39,17 @@
         </div>
       </form>
     </section>
+
+    <section class="col" id="col-items">
+      <h2>Items</h2>
+      <div id="items"></div>
+    </section>
   </main>
+  <div id="drawer-overlay" hidden></div>
+  <aside id="workflow-drawer" aria-hidden="true">
+    <h2>Agent Workflow</h2>
+    <ol id="steps"></ol>
+  </aside>
   <script src="/static/app.js"></script>
 </body>
 </html>

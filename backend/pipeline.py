@@ -7,10 +7,16 @@ def run_pipeline(pdf_bytes: bytes, repo, client) -> tuple[OrderDraft, list[dict]
     """Run the five agents in sequence. Returns the draft plus per-step status for the UI."""
     steps: list[dict] = []
 
-    text = intake.extract_text(pdf_bytes)
+    try:
+        text = intake.extract_text(pdf_bytes)
+    except ValueError:
+        text = ""  # no text layer (scanned/image PDF) — fall back to vision
     steps.append({"step": "intake", "ok": True})
 
-    po = extraction.extract_po(text, client)
+    if text:
+        po = extraction.extract_po(text, client)
+    else:
+        po = extraction.extract_po_from_pdf(pdf_bytes, client)
     steps.append({"step": "extraction", "ok": True})
 
     issues = validation.validate(po, repo)

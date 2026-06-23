@@ -1,3 +1,4 @@
+import base64
 import os
 
 from backend.models import ExtractedDocument, ExtractedPO, LineItem
@@ -31,7 +32,8 @@ def _to_extracted_po(doc: ExtractedDocument) -> ExtractedPO:
     )
 
 
-def extract_po(text: str, client) -> ExtractedPO:
+def _parse_with_retries(client, content) -> ExtractedPO:
+    """Call messages.parse with the slim schema, retrying transient failures."""
     model = os.getenv("PO_MODEL", "claude-opus-4-8")
     last_err: Exception | None = None
     for _ in range(MAX_ATTEMPTS):
@@ -40,10 +42,29 @@ def extract_po(text: str, client) -> ExtractedPO:
                 model=model,
                 max_tokens=2048,
                 system=SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": text}],
+                messages=[{"role": "user", "content": content}],
                 output_format=ExtractedDocument,
             )
             return _to_extracted_po(response.parsed_output)
         except Exception as e:  # noqa: BLE001 — retry any call failure
             last_err = e
     raise ExtractionError(f"Extraction failed after {MAX_ATTEMPTS} attempts: {last_err}")
+
+
+def extract_po(text: str, client) -> ExtractedPO:
+    """Extract from a text layer (text-based PDFs)."""
+    return _parse_with_retries(client, text)
+
+
+def extract_po_from_pdf(pdf_bytes: bytes, client) -> ExtractedPO:
+    """Extract directly from the PDF using Claude's vision/document support.
+    Used for scanned/image PDFs that have no extractable text layer."""
+    data = base64.standard_b64encode(pdf_bytes).decode("ascii")
+    content = [
+        {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": data},
+        },
+        {"type": "text", "text": "Extract the purchase order header and line items."},
+    ]
+    return _parse_with_retries(client, content)

@@ -34,6 +34,25 @@ def test_pipeline_produces_ready_draft(repo):
     assert order.status == OrderStatus.READY_TO_SUBMIT
 
 
+def test_pipeline_image_pdf_falls_back_to_vision(repo):
+    extracted = ExtractedPO(
+        header=POHeader(customer="ACME Corp", po_number="PO-3001"),
+        line_items=[LineItem(item_number="ITEM-1001", order_quantity=10, unit_price=1.0)],
+    )
+    client = FakeClient(extracted)
+    # _pdf("") has no text layer -> intake raises -> pipeline uses the vision path
+    order, steps = pipeline.run_pipeline(_pdf(""), repo, client)
+
+    assert [s["step"] for s in steps] == [
+        "intake", "extraction", "validation", "exception", "draft"
+    ]
+    assert order.header.customer == "ACME Corp"
+    assert order.line_items[0].item_number == "ITEM-1001"
+    # the PDF was sent to Claude as a document block
+    content = client.calls[0]["messages"][0]["content"]
+    assert any(b["type"] == "document" for b in content)
+
+
 def test_pipeline_unknown_item_needs_review(repo):
     extracted = ExtractedPO(
         header=POHeader(customer="Globex", po_number="PO-2002"),

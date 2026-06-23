@@ -51,15 +51,10 @@ The five agents run as a **deterministic sequential pipeline** (not an LLM-drive
 class LineItem(BaseModel):
     item_number: str
     order_quantity: int                       # 订购数量（PO 提取）
-    unit_price: float | None = None           # 单价（PO 提取；生产建议换 Decimal 避免浮点误差）
-    line_total: float | None = None           # 物品总价，派生 = unit_price × order_quantity
-    warehouse_quantity: int                   # 仓库库存（item master mock）；item 找不到时置 0 并打 UNKNOWN_ITEM
-    inventory_commit: int = 0                 # 系统自动承诺数 = min(order_quantity, warehouse_quantity)，Exception 阶段算
-    manual_commit: int | None = None          # 人工承诺数，库存不足/想少发时 operator 手动覆盖；填了以它为准
-    committed_quantity: int = 0               # 最终下发数 = manual_commit 若有否则 inventory_commit（Draft 派生）
-    difference: int                           # = order_quantity - committed_quantity（缺口/被 cut 量）
-    cut_reason_type: str | None = None        # 当 difference > 0 时填，解释整个缺口为什么 cut（下拉选择）
-    on_the_way_quantity: int = 0              # 在途数量，scroll bar (0 ~ difference)；缺口里已在途补货的量
+   bu warehouse_quantity: int                   # 仓库库存（item master mock）
+    difference: int                           # = order_quantity - warehouse_quantity（缺口/cut 量）
+    cut_reason_type: str | None = None        # cut 原因，下拉选择
+    on_the_way_quantity: int = 0              # 在途数量，scroll bar (0 ~ order_quantity)
     on_the_way_tracking_no: str | None = None # 在途单号，隐藏 text bar，仅 on_the_way>0 才显示
     note: str | None = None                   # 行备注
 
@@ -70,15 +65,14 @@ class POHeader(BaseModel):
     requested_date: str | None                # 客户要求到货日，ISO 或 None
     ship_date: str | None = None              # 计划发货日，ISO 或 None（提取/operator 可填）
     carrier: str | None = None                # 承运商，自由字符串（UPS/FedEx...），operator 可填/改
-    ship_from_warehouse: str | None = None    # 发货仓库，自由字符串，提取/operator 可填/改
 
 class ExtractedPO(BaseModel):                 # ExtractionAgent 的 structured output schema
     header: POHeader
-    line_items: list[LineItem]                # 抽取阶段只填 item_number / order_quantity / unit_price
+    line_items: list[LineItem]                # 抽取阶段只填 item_number / order_quantity
 
 class Issue(BaseModel):
     severity: Literal["error", "warning"]
-    code: str                                 # MISSING_CUSTOMER / UNKNOWN_ITEM / DUP_PO / COMMIT_EXCEEDS_STOCK ...
+    code: str                                 # MISSING_CUSTOMER / UNKNOWN_ITEM / DUP_PO ...
     message: str
     field: str | None                         # 指向字段/行，前端高亮
 
@@ -91,7 +85,6 @@ class OrderStatus(str, Enum):
 class OrderDraft(BaseModel):
     header: POHeader
     line_items: list[LineItem]
-    order_total: float | None = None          # 订单总价，派生 = sum(line_total)
     issues: list[Issue]
     order_note: str | None = None
     status: OrderStatus
@@ -99,16 +92,12 @@ class OrderDraft(BaseModel):
 ```
 
 **Field notes**
-- 库存承诺（commit）流程：`inventory_commit` = `min(order_quantity, warehouse_quantity)`（系统自动）；库存不足/想少发时 operator 填 `manual_commit` 覆盖。`committed_quantity`（最终下发仓库的数）= `manual_commit` 若填了否则 `inventory_commit`。
-- `manual_commit` 约束 `0 ≤ manual_commit ≤ warehouse_quantity`（不允许超库存/超卖）：前端输入框限定范围；submit 服务端重新校验，超库存则报 `COMMIT_EXCEEDS_STOCK`（error）兜底。
-- `difference` 是派生值 `order_quantity - committed_quantity`（缺口/被 cut 的量）。
-- Cut 不是数量滑动条，而是 `cut_reason_type` 下拉，**针对整个缺口** `difference`（为什么 cut）。默认下拉选项：`缺货 / 已停产 / 客户要求 / 货损 / 其他`。
-- `on_the_way_quantity` 是 scroll bar，范围 `0 ~ difference`：表示「缺口里有多少已在途补货」。它是**补充信息，不改变** `committed_quantity` / `difference`；`cut_reason_type` 仍解释整个缺口。
-- Item 默认都在 item master 里。**存在性检查只由 Exception 负责**（Validation 不查）：找不到的 item → 打 `UNKNOWN_ITEM`（error，message `Not found`），并把 `warehouse_quantity` / `inventory_commit` / `committed_quantity` 全置 0（→ `difference = order_quantity`）。
+- `difference` 是派生值 `order_quantity - warehouse_quantity`（缺口/被 cut 的量）。
+- Cut 不是数量滑动条，而是 `cut_reason_type` 下拉（为什么 cut）。默认下拉选项：`缺货 / 已停产 / 客户要求 / 货损 / 其他`。
+- `on_the_way_quantity` 是独立的 scroll bar（0 ~ order_quantity）。
 - `on_the_way_tracking_no` 是隐藏 text bar，仅当 `on_the_way_quantity > 0` 时显示。
 - `warehouse_quantity` 来自 item master mock；Extraction 阶段不填，由 Exception/Validation 阶段补。
-- `ship_date` / `carrier` / `ship_from_warehouse` 是订单级（header）字段：Extraction 若 PO 上写了就提取，否则 null；operator 在草稿里填/改。`ship_date` 是计划发货日（区别于 `requested_date` 客户要求到货日），`carrier` 是自由字符串（如 `UPS` / `FedEx`），不是枚举。
-- 金额字段：`unit_price` 是单价（PO 提取）；`line_total`（物品总价）和 `order_total`（订单总价）都是 **派生值**，由 DraftAgent 计算——`line_total = unit_price × order_quantity`，`order_total = sum(line_total)`。**注意：按订购数 `order_quantity` 算，不是 cut 后的实发数**（PO 原始金额，用于核对提取是否正确；cut 后的实发金额暂为 out of scope）。任一行 `unit_price` 为 null 时该行 `line_total` 也为 null，`order_total` 只汇总有价的行。MVP 用 `float`，生产建议换 `Decimal` 或整数分。
+- `ship_date` / `carrier` 是订单级（header）字段：Extraction 若 PO 上写了就提取，否则 null；operator 在草稿里填/改。`ship_date` 是计划发货日（区别于 `requested_date` 客户要求到货日），`carrier` 是自由字符串（如 `UPS` / `FedEx`），不是枚举。
 
 ## Agent contracts
 
@@ -117,8 +106,8 @@ class OrderDraft(BaseModel):
 | Intake | `{pdf bytes}` | 干净纯文本 + `document_type` | 否（pdfplumber + 清洗） |
 | Extraction | 文本 | `ExtractedPO` (header + line items) | **是**（`messages.parse` + schema） |
 | Validation | `ExtractedPO` | `list[Issue]`（必填/格式/重复 PO） | 否（规则 + repository 查询） |
-| Exception | `ExtractedPO` + master data | `list[Issue]`（含 `UNKNOWN_ITEM`）+ 回填 `warehouse_quantity` / `inventory_commit` | 否（查 master data：存在性检查 + 算自动承诺） |
-| Draft | `ExtractedPO` + 合并 issues | `OrderDraft` | 否（拼装 + 算 committed_quantity/差额/金额/状态） |
+| Exception | `ExtractedPO` + master data | `list[Issue]` + 回填 `warehouse_quantity` | 否（查 master data） |
+| Draft | `ExtractedPO` + 合并 issues | `OrderDraft` | 否（拼装 + 算状态/差额） |
 
 **Status 规则（系统初判）**：任何 `severity == "error"` 的 issue → `NEEDS_REVIEW`；否则 `READY_TO_SUBMIT`。`UNKNOWN_ITEM`（README 场景 3）按 error。
 
@@ -129,7 +118,7 @@ class OrderDraft(BaseModel):
 | 方法 | 路径 | 作用 |
 |---|---|---|
 | `POST /api/process` | 上传 PDF（multipart）→ 跑流水线 → 返回 `OrderDraft` + 每步 step 状态 |
-| `POST /api/submit` | 提交编辑后的 `OrderDraft` → 服务端**重跑 Exception + Draft**（按编辑后的 `order_quantity` / `manual_commit` 重算 `inventory_commit` / `committed_quantity` / `difference` / 金额）+ 重新校验（必填/格式/`COMMIT_EXCEEDS_STOCK`/重复 PO）→ 通过则落库 + 登记 PO → 返回终态 |
+| `POST /api/submit` | 提交编辑后的 `OrderDraft` → 服务端重新校验 → 落库 + 登记 PO → 返回终态 |
 
 ## Frontend (单页三栏)
 
@@ -138,24 +127,21 @@ class OrderDraft(BaseModel):
                                                   Customer  [______]
                                                   PO Number [______]
                                                   Ship To   [______]
-                                                  Ship From [______]   ← 发货仓库
                                                   Ship Date [______]
                                                   Carrier   [______]
                                                   Items:
-                                                    ITEM-1001  订购50 | 单价$2.00 | 行总价$100.00 | 库存30
-                                                       Commit: 系统30 → 手动[__30__] → 实发30  差额(cut)20
+                                                    ITEM-1001  订购50 | 库存30 | 差额(cut)20
                                                        Cut reason:[缺货 ▼]
                                                        On the way:[===●----]15  单号:[TRK-...]
                                                        📝 note
                                                     ITEM-9999  ⚠ 未知物品
-                                                  Order Total: $100.00
                                                   Order note:[__________]
                                                   Status: needs_review
                                                   [Revise] [Save] [Release to Warehouse]
 ```
 
 - header 字段、order_quantity 可 inline 编辑
-- 每行：`cut_reason_type` 下拉（针对整个缺口）/ `on_the_way_quantity` scroll bar（0~difference）/ 在途单号（>0 显示）/ 行备注
+- 每行：`cut_reason_type` 下拉 / `on_the_way_quantity` scroll bar / 在途单号（>0 显示）/ 行备注
 - `Release to Warehouse` 仅在 `ready_to_submit` 时可点
 
 ## Error handling
