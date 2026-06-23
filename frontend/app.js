@@ -1,9 +1,60 @@
 const $ = (sel) => document.querySelector(sel);
 let currentOrder = null;
 
+const drawer = $("#workflow-drawer");
+const overlay = $("#drawer-overlay");
+const toggleBtn = $("#workflow-toggle");
+
+function openDrawer() {
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  toggleBtn.setAttribute("aria-expanded", "true");
+  overlay.hidden = false;
+  requestAnimationFrame(() => overlay.classList.add("visible"));
+  setToggleArrow(true);
+}
+
+function closeDrawer() {
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+  toggleBtn.setAttribute("aria-expanded", "false");
+  overlay.classList.remove("visible");
+  setTimeout(() => { overlay.hidden = true; }, 200);
+  setToggleArrow(false);
+}
+
+function toggleDrawer() {
+  if (drawer.classList.contains("open")) closeDrawer();
+  else openDrawer();
+}
+
+function setToggleArrow(isOpen) {
+  const arrow = isOpen ? "◂" : "▸";
+  const badge = toggleBtn.dataset.badge || "";
+  toggleBtn.textContent = `Agent Workflow ${arrow}${badge ? " " + badge : ""}`;
+}
+
+function setWorkflowBadge(badge) {
+  toggleBtn.dataset.badge = badge || "";
+  setToggleArrow(drawer.classList.contains("open"));
+}
+
+function updateWorkflowBadge(steps) {
+  const total = steps.length;
+  const okCount = steps.filter((s) => s.ok).length;
+  setWorkflowBadge(okCount === total ? `${okCount}/${total} ✓` : `${okCount}/${total}`);
+}
+
+toggleBtn.addEventListener("click", toggleDrawer);
+overlay.addEventListener("click", closeDrawer);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && drawer.classList.contains("open")) closeDrawer();
+});
+
 $("#pdf-input").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  setWorkflowBadge("");
   $("#pdf-preview").src = URL.createObjectURL(file);
   const form = new FormData();
   form.append("file", file);
@@ -14,6 +65,7 @@ $("#pdf-input").addEventListener("change", async (e) => {
   }
   const body = await resp.json();
   renderSteps(body.steps);
+  updateWorkflowBadge(body.steps);
   currentOrder = body.order;
   renderDraft(currentOrder);
 });
