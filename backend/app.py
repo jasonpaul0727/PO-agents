@@ -12,7 +12,7 @@ from backend import pipeline
 from backend.agents import draft, validation
 from backend.agents import exception as exception_agent
 from backend.agents.extraction import ExtractionError
-from backend.models import ExtractedPO, OrderDraft, OrderStatus
+from backend.models import ExtractedPO, ItemMapping, OrderDraft, OrderStatus
 from backend.repository import Repository
 
 load_dotenv()
@@ -43,6 +43,64 @@ async def process(file: UploadFile = File(...), client=Depends(get_client)):
     except ExtractionError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"order": order.model_dump(), "steps": steps}
+
+
+@app.get("/api/check-item")
+def check_item(item_number: str, order_quantity: int | None = None):
+    """Lightweight item-master lookup for live found/not-found + stock/commit feedback.
+
+    Mirrors exception.process_exceptions so the row updates the same way a full
+    re-validation would. No LLM, no cost.
+    """
+    item = repo.find_item(item_number.strip())
+    if item is None:
+        return {"found": False, "item_number": item_number,
+                "warehouse_quantity": 0, "inventory_commit": 0}
+    commit = None
+    if order_quantity is not None:
+        commit = min(order_quantity, item.warehouse_quantity)
+    return {
+        "found": True,
+        "item_number": item.item_number,
+        "warehouse_quantity": item.warehouse_quantity,
+        "inventory_commit": commit,
+    }
+
+
+@app.get("/api/resolve-item")
+def resolve_item(customer: str, customer_item_number: str, order_quantity: int | None = None):
+    """Map a customer's own item number to our internal item number, then check stock.
+
+    Used when a PO lists the customer's item numbers instead of ours. No LLM, no cost.
+    """
+    our = repo.resolve_customer_item(customer.strip(), customer_item_number.strip())
+    if our is None:
+        return {"resolved": False, "customer_item_number": customer_item_number}
+
+    item = repo.find_item(our)
+    found = item is not None
+    commit = None
+    if found and order_quantity is not None:
+        commit = min(order_quantity, item.warehouse_quantity)
+    return {
+        "resolved": True,
+        "customer_item_number": customer_item_number,
+        "item_number": our,
+        "found": found,
+        "warehouse_quantity": item.warehouse_quantity if found else 0,
+        "inventory_commit": commit if found else 0,
+    }
+
+
+@app.post("/api/map-item")
+def map_item(mapping: ItemMapping):
+    """Learn-as-you-go: persist an operator-supplied customer->our item mapping."""
+    repo.add_customer_item_mapping(
+        mapping.customer.strip(),
+        mapping.customer_item_number.strip(),
+        mapping.item_number.strip(),
+    )
+    return {"saved": True}
 
 
 @app.post("/api/submit")

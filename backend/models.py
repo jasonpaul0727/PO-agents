@@ -5,7 +5,8 @@ from pydantic import BaseModel
 
 
 class LineItem(BaseModel):
-    item_number: str
+    item_number: str                            # our internal item number
+    customer_item_number: str | None = None     # the customer's own item number (cross-ref source)
     order_quantity: int
     unit_price: float | None = None             # extracted
     line_total: float | None = None             # derived = unit_price * order_quantity
@@ -52,6 +53,14 @@ class ExtractedDocument(BaseModel):
 
     header: POHeader
     line_items: list[ExtractedLineItem]
+
+
+class ItemMapping(BaseModel):
+    """A learned (customer item number -> our item number) cross-reference row."""
+
+    customer: str
+    customer_item_number: str
+    item_number: str
 
 
 class Issue(BaseModel):

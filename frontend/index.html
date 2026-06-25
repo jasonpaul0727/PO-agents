@@ -14,8 +14,17 @@
   <main class="cols">
     <section class="col" id="col-pdf">
       <h2>Original PO</h2>
-      <input type="file" id="pdf-input" accept="application/pdf" />
-      <iframe id="pdf-preview" title="PDF preview"></iframe>
+      <input type="file" id="pdf-input" accept="application/pdf" hidden />
+      <label id="dropzone" for="pdf-input">
+        <div class="dz-icon" aria-hidden="true">⤓</div>
+        <div class="dz-title">拖入 PDF 或点击上传</div>
+        <div class="dz-sub">采购订单 · PDF 格式</div>
+      </label>
+      <button type="button" id="btn-demo">加载演示单据 · 不调用 API（免费）</button>
+      <div id="preview-wrap" hidden>
+        <button type="button" id="btn-change-pdf" class="btn-text">更换 PDF</button>
+        <iframe id="pdf-preview" title="PDF preview"></iframe>
+      </div>
     </section>
 
     <section class="col" id="col-draft">
@@ -33,9 +42,9 @@
         <label>Order note <input name="order_note" /></label>
         <div class="status">Status: <span id="status">—</span></div>
         <div class="actions">
-          <button type="button" id="btn-revise">Revise</button>
-          <button type="button" id="btn-save">Save</button>
-          <button type="button" id="btn-release">Release to Warehouse</button>
+          <button type="button" id="btn-revise" class="btn-text">Revise</button>
+          <button type="button" id="btn-save" class="btn-secondary">Save</button>
+          <button type="button" id="btn-release" class="btn-primary">Release to Warehouse</button>
         </div>
       </form>
     </section>
@@ -50,6 +59,7 @@
     <h2>Agent Workflow</h2>
     <ol id="steps"></ol>
   </aside>
+  <div id="toast-host" aria-live="polite"></div>
   <script src="/static/app.js"></script>
 </body>
 </html>
