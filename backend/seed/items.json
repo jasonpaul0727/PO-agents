@@ -1,4 +1,334 @@
 [
-  { "item_number": "ITEM-1001", "warehouse_quantity": 30 },
-  { "item_number": "ITEM-1002", "warehouse_quantity": 100 }
+  {
+    "item_number": "ITEM-1001",
+    "warehouse_quantity": 30
+  },
+  {
+    "item_number": "ITEM-1002",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-001",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-002",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-004",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-005",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-006",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-007",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-008",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-009",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-010",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-011",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-012",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-014",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-015",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-016",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-017",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-018",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-019",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-020",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-021",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-022",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-024",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-025",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-026",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-027",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-028",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-029",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-040",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-041",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-042",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-044",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-045",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-046",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-047",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-048",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-049",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-050",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-051",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-052",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-054",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-055",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-056",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-057",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-058",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-059",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-060",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-061",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-062",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-064",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-065",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-066",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-067",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-068",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-069",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-070",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-071",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-072",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-074",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-075",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-076",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-077",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-078",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-079",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-080",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-081",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-082",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-084",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-085",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-086",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-087",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-088",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-089",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-090",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-091",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-092",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-094",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-095",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-096",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-097",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-098",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-099",
+    "warehouse_quantity": 100
+  },
+  {
+    "item_number": "ITEM-100",
+    "warehouse_quantity": 100
+  }
 ]

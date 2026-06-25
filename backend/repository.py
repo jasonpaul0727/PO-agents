@@ -31,6 +31,12 @@ class Repository:
                 warehouse_quantity INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS submitted_pos (po_number TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS customer_items (
+                customer TEXT NOT NULL,
+                customer_item_number TEXT NOT NULL,
+                item_number TEXT NOT NULL,
+                PRIMARY KEY (customer, customer_item_number)
+            );
             """
         )
         self.conn.commit()
@@ -47,6 +53,14 @@ class Repository:
             "INSERT OR REPLACE INTO items(item_number, warehouse_quantity) VALUES (?, ?)",
             [(i["item_number"], i["warehouse_quantity"]) for i in items],
         )
+        xref_path = seed / "customer_items.json"
+        if xref_path.exists():
+            xref = json.loads(xref_path.read_text(encoding="utf-8"))
+            self.conn.executemany(
+                "INSERT OR REPLACE INTO customer_items"
+                "(customer, customer_item_number, item_number) VALUES (?, ?, ?)",
+                [(x["customer"], x["customer_item_number"], x["item_number"]) for x in xref],
+            )
         self.conn.commit()
 
     def customer_exists(self, name: str) -> bool:
@@ -60,6 +74,27 @@ class Repository:
         )
         row = cur.fetchone()
         return Item(item_number=row[0], warehouse_quantity=row[1]) if row else None
+
+    def resolve_customer_item(self, customer: str, customer_item_number: str) -> str | None:
+        """Map a customer's own item number to our internal item number, or None."""
+        cur = self.conn.execute(
+            "SELECT item_number FROM customer_items "
+            "WHERE customer = ? AND customer_item_number = ?",
+            (customer, customer_item_number),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+    def add_customer_item_mapping(
+        self, customer: str, customer_item_number: str, item_number: str
+    ) -> None:
+        """Persist a learned cross-reference so this customer item resolves next time."""
+        self.conn.execute(
+            "INSERT OR REPLACE INTO customer_items"
+            "(customer, customer_item_number, item_number) VALUES (?, ?, ?)",
+            (customer, customer_item_number, item_number),
+        )
+        self.conn.commit()
 
     def is_duplicate_po(self, po_number: str) -> bool:
         cur = self.conn.execute(
