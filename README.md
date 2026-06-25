@@ -25,7 +25,8 @@ This process is **repetitive, time-consuming, and error-prone**.
 
 **PO Intake Agent** automates the intake process by converting unstructured purchase orders into validated, human-reviewable order records.
 
-The system uses multiple agents to:
+The system runs a **deterministic, five-stage pipeline** (not a system of autonomous,
+self-directing agents) to:
 
 - Extract order information
 - Validate data quality
@@ -33,7 +34,8 @@ The system uses multiple agents to:
 - Flag anomalies
 - Generate a ready-to-submit order draft
 
-> The final decision always remains with the human operator.
+Only the **extraction** stage calls an LLM (Claude); every other stage is plain
+rule-based code. The final decision always remains with the human operator.
 
 ---
 
@@ -142,9 +144,15 @@ Status: Ready to Submit
 
 ---
 
-## Agent Architecture
+## Pipeline Architecture
 
-| # | Agent | Responsibility | Output |
+The five stages below are named "Agent" only as a labeling convention for the
+[Agent Workflow] panel in the UI. They are **sequential functions**, not autonomous
+agents: each stage's output feeds the next in a fixed order, with no inter-agent
+messaging, negotiation, or looping. Only stage 2 (Extraction) uses an LLM; the rest
+are deterministic rules and database lookups.
+
+| # | Stage | Responsibility | Output |
 | --- | --- | --- | --- |
 | 1 | **Intake Agent** | Receive PDF / email text, clean input | `{ "document_type": "PO" }` |
 | 2 | **Extraction Agent** | Extract header fields and line items | Header + line item JSON |
