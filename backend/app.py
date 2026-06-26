@@ -1,11 +1,13 @@
+import io
 import os
 
 from pathlib import Path
 
 import anthropic
+import pypdfium2 as pdfium
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from backend import pipeline
@@ -41,6 +43,21 @@ def index():
 
 def get_client():
     return anthropic.Anthropic()
+
+
+@app.post("/api/preview")
+async def preview(file: UploadFile = File(...)):
+    """Render page 1 of the PDF to a PNG so the UI can show it as an <img>,
+    which displays reliably regardless of the browser's PDF settings."""
+    pdf_bytes = await file.read()
+    try:
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        pil = pdf[0].render(scale=2.0).to_pil()
+    except Exception as e:  # noqa: BLE001 — bad/corrupt PDF
+        raise HTTPException(status_code=422, detail=f"Could not render PDF: {e}")
+    buf = io.BytesIO()
+    pil.save(buf, format="PNG")
+    return Response(content=buf.getvalue(), media_type="image/png")
 
 
 @app.post("/api/process")
