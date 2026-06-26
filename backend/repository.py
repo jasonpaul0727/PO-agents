@@ -1,13 +1,48 @@
 import json
+import re
 import sqlite3
 from pathlib import Path
 
 from pydantic import BaseModel
 
 
+def _normalize_name(s: str | None) -> str:
+    """Lowercase + strip all non-alphanumerics, so 'OLLIE'S BARGAIN OUTLET, INC.'
+    and 'Ollies' both reduce to a comparable form."""
+    return re.sub(r"[^a-z0-9]", "", (s or "").lower())
+
+
 class Item(BaseModel):
     item_number: str
     warehouse_quantity: int
+
+
+def _ollies_rule(customer_item_number: str) -> str | None:
+    """Ollies orders use their own numbers whose LAST TWO DIGITS equal our item's
+    two-digit suffix, e.g. 75023 -> ITEM-023. Items sharing the same last two
+    digits are treated as the same item."""
+    tail = customer_item_number[-2:]
+    if len(tail) == 2 and tail.isdigit():
+        n = int(tail) or 100  # '00' -> 100
+        return f"ITEM-{n:03d}"
+    return None
+
+
+# Per-customer derivation rules. A customer here resolves by rule instead of by
+# the customer_items lookup table. Everyone else uses the table (+ learn-as-you-go).
+CUSTOMER_RULES = {
+    "Ollies": _ollies_rule,
+}
+
+
+def _canonical_customer(name: str) -> str:
+    """Map a free-form customer name to a canonical key when it matches a known
+    rule customer, e.g. 'OLLIE'S BARGAIN OUTLET, INC.' -> 'Ollies'."""
+    norm = _normalize_name(name)
+    for key in CUSTOMER_RULES:
+        if _normalize_name(key) in norm:
+            return key
+    return name
 
 
 class Repository:
@@ -63,9 +98,21 @@ class Repository:
             )
         self.conn.commit()
 
+    def add_customer(self, name: str) -> None:
+        """Register a new customer in the master so it stops flagging UNKNOWN_CUSTOMER."""
+        self.conn.execute("INSERT OR IGNORE INTO customers(name) VALUES (?)", (name,))
+        self.conn.commit()
+
     def customer_exists(self, name: str) -> bool:
         cur = self.conn.execute("SELECT 1 FROM customers WHERE name = ?", (name,))
-        return cur.fetchone() is not None
+        if cur.fetchone() is not None:
+            return True
+        # Alias match: e.g. "OLLIE'S BARGAIN OUTLET, INC." -> known customer "Ollies".
+        canonical = _canonical_customer(name)
+        if canonical != name:
+            cur = self.conn.execute("SELECT 1 FROM customers WHERE name = ?", (canonical,))
+            return cur.fetchone() is not None
+        return False
 
     def find_item(self, item_number: str) -> Item | None:
         cur = self.conn.execute(
@@ -76,14 +123,29 @@ class Repository:
         return Item(item_number=row[0], warehouse_quantity=row[1]) if row else None
 
     def resolve_customer_item(self, customer: str, customer_item_number: str) -> str | None:
-        """Map a customer's own item number to our internal item number, or None."""
+        """Map a customer's own item number to our internal item number, or None.
+
+        Customers with a derivation rule (e.g. Ollies) resolve by rule; everyone
+        else falls back to the customer_items table (incl. learn-as-you-go entries).
+        """
+        # 1) Explicit table entries win — these are operator overrides and
+        #    learn-as-you-go mappings, which must take precedence over any rule.
         cur = self.conn.execute(
             "SELECT item_number FROM customer_items "
             "WHERE customer = ? AND customer_item_number = ?",
             (customer, customer_item_number),
         )
         row = cur.fetchone()
-        return row[0] if row else None
+        if row:
+            return row[0]
+
+        # 2) Fall back to the per-customer derivation rule (e.g. Ollies last-2-digits).
+        rule = CUSTOMER_RULES.get(_canonical_customer(customer))
+        if rule:
+            derived = rule(customer_item_number)
+            if derived:
+                return derived
+        return None
 
     def add_customer_item_mapping(
         self, customer: str, customer_item_number: str, item_number: str

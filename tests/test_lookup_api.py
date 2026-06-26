@@ -97,12 +97,38 @@ def test_resolve_item_cross_customer_isolation():
 
 
 def test_resolve_item_unmatched():
-    # 9999 is not in Ollies' cross-reference at all.
+    # Globex has no derivation rule and no cross-ref rows, so nothing resolves.
     resp = client_with_seed().get(
-        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "9999"}
+        "/api/resolve-item", params={"customer": "Globex", "customer_item_number": "9999"}
     )
     body = resp.json()
     assert body["resolved"] is False
+
+
+def test_resolve_item_ollies_rule():
+    client = client_with_seed()
+    # Ollies resolves by rule: last two digits -> our ITEM-0XX, regardless of prefix.
+    r1 = client.get(
+        "/api/resolve-item",
+        params={"customer": "Ollies", "customer_item_number": "75022", "order_quantity": 30},
+    ).json()
+    assert r1["resolved"] is True
+    assert r1["item_number"] == "ITEM-022"
+    assert r1["found"] is True
+
+    # Same last two digits -> same item, even with a different prefix.
+    r2 = client.get(
+        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "88822"}
+    ).json()
+    assert r2["item_number"] == "ITEM-022"
+
+    # 75023 -> ITEM-023, which is excluded from the item master (digit '3') -> not found.
+    r3 = client.get(
+        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75023"}
+    ).json()
+    assert r3["resolved"] is True
+    assert r3["item_number"] == "ITEM-023"
+    assert r3["found"] is False
 
 
 def test_resolve_item_commit_capped_at_stock():
@@ -144,6 +170,66 @@ def test_map_item_learns_new_mapping():
     assert post["inventory_commit"] == 70
 
 
+def test_resolve_item_alias_customer_name():
+    # The PO's legal name resolves to the Ollies rule via alias matching.
+    body = client_with_seed().get(
+        "/api/resolve-item",
+        params={
+            "customer": "OLLIE'S BARGAIN OUTLET, INC.",
+            "customer_item_number": "75022",
+            "order_quantity": 30,
+        },
+    ).json()
+    assert body["resolved"] is True
+    assert body["item_number"] == "ITEM-022"
+    assert body["found"] is True
+
+
+def test_resolve_item_rule_double_zero_is_100():
+    body = client_with_seed().get(
+        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75100"}
+    ).json()
+    assert body["item_number"] == "ITEM-100"  # '00' -> 100, not 000
+
+
+def test_customer_exists_alias():
+    repo = Repository(db_path=":memory:", seed_dir=SEED)
+    assert repo.customer_exists("OLLIE'S BARGAIN OUTLET, INC.") is True  # alias of Ollies
+    assert repo.customer_exists("Totally Unknown LLC") is False
+
+
+def test_manual_mapping_overrides_rule():
+    client = client_with_seed()
+    # By default Ollies 75022 resolves to ITEM-022 via the last-2-digits rule.
+    pre = client.get(
+        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75022"}
+    ).json()
+    assert pre["item_number"] == "ITEM-022"
+
+    # Operator manually overrides it.
+    client.post(
+        "/api/map-item",
+        json={"customer": "Ollies", "customer_item_number": "75022", "item_number": "ITEM-050"},
+    )
+
+    # The saved table entry now wins over the rule (no second release needed).
+    post = client.get(
+        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75022"}
+    ).json()
+    assert post["item_number"] == "ITEM-050"
+
+
+def test_add_customer_registers_new_customer():
+    from backend import app as app_module
+
+    client = client_with_seed()
+    assert app_module.repo.customer_exists("Brand New Co") is False
+    resp = client.post("/api/add-customer", json={"name": "Brand New Co"})
+    assert resp.status_code == 200
+    assert resp.json()["added"] is True
+    assert app_module.repo.customer_exists("Brand New Co") is True
+
+
 def test_map_item_is_per_customer():
     client = client_with_seed()
     client.post(
@@ -151,7 +237,8 @@ def test_map_item_is_per_customer():
         json={"customer": "ACME Corp", "customer_item_number": "8001", "item_number": "ITEM-004"},
     )
     # A different customer must NOT inherit ACME's learned mapping.
+    # (Use Globex, which has no derivation rule, so only ACME's table row applies.)
     other = client.get(
-        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "8001"}
+        "/api/resolve-item", params={"customer": "Globex", "customer_item_number": "8001"}
     ).json()
     assert other["resolved"] is False

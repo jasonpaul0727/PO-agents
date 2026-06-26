@@ -6,7 +6,11 @@ from backend.models import ExtractedDocument, ExtractedPO, LineItem
 SYSTEM_PROMPT = (
     "Extract only what is present in the purchase order. "
     "Do not invent missing fields — set them to null. "
-    "Fill item_number, order_quantity, and unit_price for each line item."
+    "Always capture the PO number (labelled PO#, PO No, Purchase Order, etc.). "
+    "For each line item fill order_quantity (units ordered) and unit_price (unit cost). "
+    "Item numbers printed on a customer's purchase order are the CUSTOMER's own "
+    "item/model numbers — put them in customer_item_number. Only set item_number "
+    "when you are confident a number is OUR internal SKU; otherwise leave item_number null."
 )
 
 MAX_ATTEMPTS = 3  # initial + 2 retries
@@ -23,7 +27,12 @@ def _to_extracted_po(doc: ExtractedDocument) -> ExtractedPO:
         header=doc.header,
         line_items=[
             LineItem(
-                item_number=li.item_number,
+                # On a customer PO the printed number is the customer's, not ours.
+                # Leave OUR item_number empty when a customer number is present —
+                # the resolution step fills it from the mapping, or the operator
+                # does. Never echo the customer's number into our field.
+                item_number="" if li.customer_item_number else li.item_number,
+                customer_item_number=li.customer_item_number,
                 order_quantity=li.order_quantity,
                 unit_price=li.unit_price,
             )
@@ -65,6 +74,10 @@ def extract_po_from_pdf(pdf_bytes: bytes, client) -> ExtractedPO:
             "type": "document",
             "source": {"type": "base64", "media_type": "application/pdf", "data": data},
         },
-        {"type": "text", "text": "Extract the purchase order header and line items."},
+        {"type": "text", "text": (
+            "Extract the purchase order header (including the PO number) and line items. "
+            "For each line, if there is a customer/model item number column distinct from "
+            "an internal SKU, put it in customer_item_number."
+        )},
     ]
     return _parse_with_retries(client, content)

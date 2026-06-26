@@ -42,6 +42,7 @@ class ExtractedLineItem(BaseModel):
     extraction schema."""
 
     item_number: str
+    customer_item_number: str | None = None     # customer's own item / model number, if shown
     order_quantity: int
     unit_price: float | None = None
 
@@ -53,6 +54,12 @@ class ExtractedDocument(BaseModel):
 
     header: POHeader
     line_items: list[ExtractedLineItem]
+
+
+class CustomerName(BaseModel):
+    """Request body for registering a previously-unknown customer."""
+
+    name: str
 
 
 class ItemMapping(BaseModel):
