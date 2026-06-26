@@ -4,6 +4,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 pydantic>=2.9
 pdfplumber>=0.11
+pypdfium2>=4.30            # render PDF page -> PNG for the UI preview
 python-multipart>=0.0.12   # FastAPI file uploads
 python-dotenv>=1.0
 # Dev / test

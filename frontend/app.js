@@ -66,8 +66,24 @@ function showToast(message, tone = "green") {
 }
 
 // ---------- PDF preview / dropzone ----------
-function showPreview(file) {
-  $("#pdf-preview").src = URL.createObjectURL(file);
+async function showPreview(file) {
+  // Render server-side to a PNG so it shows regardless of the browser's PDF settings.
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    const resp = await fetch("/api/preview", { method: "POST", body: form });
+    if (resp.ok) {
+      showPreviewUrl(URL.createObjectURL(await resp.blob()));
+      return;
+    }
+  } catch (err) {
+    /* fall through to a plain message */
+  }
+  showToast("无法生成 PDF 预览", "orange");
+}
+
+function showPreviewUrl(url) {
+  $("#pdf-preview").src = url;
   $("#dropzone").hidden = true;
   $("#preview-wrap").hidden = false;
 }
@@ -191,6 +207,7 @@ function demoOrder() {
 
 async function loadDemo() {
   const steps = PIPELINE_STEPS.map((s) => ({ step: s, ok: true }));
+  showPreviewUrl("/static/demo.png"); // show a sample PO image in the left column
   setWorkflowBadge("");
   renderStepsPending();
   openDrawer();

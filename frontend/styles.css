@@ -128,9 +128,15 @@ h1 {
   transition: background 150ms var(--ease);
 }
 #pdf-input::file-selector-button:hover { background: var(--fill-strong); }
+#preview-wrap {
+  max-height: 64vh;
+  overflow: auto;
+  border-radius: 12px;
+}
 #pdf-preview {
+  display: block;
   width: 100%;
-  height: 62vh;
+  height: auto;
   border: none;
   border-radius: 12px;
   background: var(--fill);
@@ -517,6 +523,7 @@ select:focus-visible {
   outline: 2px dashed var(--accent);
   outline-offset: -8px;
 }
+#dropzone[hidden] { display: none; }
 #dropzone {
   display: flex;
   flex-direction: column;
