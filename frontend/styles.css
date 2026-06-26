@@ -408,6 +408,18 @@ select:focus-visible {
   border-left: 4px solid var(--red);
 }
 
+.shortfall {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b25e00;
+  background: var(--orange-bg);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: 6px 0;
+}
+.shortfall[hidden] { display: none; }
+@media (prefers-color-scheme: dark) { .shortfall { color: #ffc14d; } }
+
 .issue {
   color: var(--red);
   font-size: 12px;

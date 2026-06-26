@@ -38,6 +38,32 @@ def test_customer_item_resolves_then_checks(repo):
     assert issues == []
 
 
+def test_printed_number_not_ours_becomes_customer_number(repo):
+    # A PO that prints only the customer's number (not in our master) -> the number
+    # moves to customer_item_number and our item_number is left empty for mapping.
+    po = ExtractedPO(
+        header=POHeader(customer="ACME Corp", po_number="PO-1"),
+        line_items=[LineItem(item_number="ZZ-777", order_quantity=10)],
+    )
+    issues = exception.process_exceptions(po, repo)
+    li = po.line_items[0]
+    assert li.customer_item_number == "ZZ-777"
+    assert li.item_number == ""
+    assert any(i.code == "UNKNOWN_ITEM" for i in issues)
+
+
+def test_our_number_stays_in_our_field(repo):
+    # A PO that lists our actual SKU keeps it in item_number (not moved).
+    po = ExtractedPO(
+        header=POHeader(customer="ACME Corp", po_number="PO-1"),
+        line_items=[LineItem(item_number="ITEM-1002", order_quantity=10)],
+    )
+    exception.process_exceptions(po, repo)
+    li = po.line_items[0]
+    assert li.item_number == "ITEM-1002"
+    assert li.customer_item_number is None
+
+
 def test_unknown_item_errors_and_zeroes(repo):
     po = ExtractedPO(
         header=POHeader(customer="ACME Corp", po_number="PO-1"),

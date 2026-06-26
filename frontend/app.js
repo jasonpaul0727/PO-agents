@@ -290,7 +290,10 @@ function itemRow(li, idx) {
         Commit auto ${li.inventory_commit} →
         manual <input type="number" min="0" max="${li.warehouse_quantity}"
           value="${li.manual_commit ?? li.inventory_commit}" data-field="manual_commit" />
-        → ships ${li.committed_quantity} | cut ${li.difference}
+        → ships <span data-out="ships">${li.committed_quantity}</span> | cut <span data-out="cut">${li.difference}</span>
+      </div>
+      <div class="shortfall" data-out="shortfall" ${li.difference > 0 ? "" : "hidden"}>
+        ⚠ 仓库不足:订 ${li.order_quantity} / 库存 ${li.warehouse_quantity},缺 <span data-out="cut2">${li.difference}</span> 件 — 请手动调整 commit,并填 cut 原因 / 在途
       </div>
       <div class="commit-row">
         Cut reason
@@ -303,7 +306,7 @@ function itemRow(li, idx) {
       <div class="commit-row">
         On the way <input type="range" min="0" max="${li.difference}"
           value="${li.on_the_way_quantity}" data-field="on_the_way_quantity" />
-        <span>${li.on_the_way_quantity}</span>
+        <span data-out="otw">${li.on_the_way_quantity}</span>
         <input placeholder="tracking #" value="${li.on_the_way_tracking_no ?? ""}"
           data-field="on_the_way_tracking_no" />
       </div>
@@ -448,6 +451,52 @@ $("#items").addEventListener("change", async (e) => {
   li.item_number = data.item_number;
   applyLineLookup(idx, data);
 });
+
+// Live recompute of ships / cut / shortfall when manual commit changes, and live
+// on-the-way value as the slider moves. (These were static, server-rendered text.)
+$("#items").addEventListener("input", (e) => {
+  const field = e.target.dataset && e.target.dataset.field;
+  const row = e.target.closest ? e.target.closest(".item") : null;
+  if (!row) return;
+  const idx = Number(row.dataset.idx);
+  if (field === "manual_commit") {
+    recomputeCommit(idx);
+  } else if (field === "on_the_way_quantity") {
+    currentOrder.line_items[idx].on_the_way_quantity = Number(e.target.value);
+    const otw = row.querySelector('[data-out="otw"]');
+    if (otw) otw.textContent = e.target.value;
+  }
+});
+
+function recomputeCommit(idx) {
+  const li = currentOrder.line_items[idx];
+  const row = document.querySelector(`.item[data-idx="${idx}"]`);
+  if (!row) return;
+  const manual = row.querySelector('[data-field="manual_commit"]').value;
+  li.manual_commit = manual === "" ? null : Number(manual);
+  li.committed_quantity = li.manual_commit != null ? li.manual_commit : li.inventory_commit;
+  li.difference = Math.max(0, li.order_quantity - li.committed_quantity);
+
+  row.querySelector('[data-out="ships"]').textContent = li.committed_quantity;
+  row.querySelector('[data-out="cut"]').textContent = li.difference;
+
+  const sf = row.querySelector('[data-out="shortfall"]');
+  if (sf) {
+    sf.hidden = li.difference <= 0;
+    const cut2 = row.querySelector('[data-out="cut2"]');
+    if (cut2) cut2.textContent = li.difference;
+  }
+
+  // On-the-way is capped at the shortfall — re-enable the slider and clamp it.
+  const otwEl = row.querySelector('[data-field="on_the_way_quantity"]');
+  if (otwEl) {
+    otwEl.max = li.difference;
+    if (Number(otwEl.value) > li.difference) otwEl.value = li.difference;
+    li.on_the_way_quantity = Number(otwEl.value);
+    const otwOut = row.querySelector('[data-out="otw"]');
+    if (otwOut) otwOut.textContent = li.on_the_way_quantity;
+  }
+}
 
 function updateLineIssue(idx, found) {
   const field = `line_items[${idx}].item_number`;
