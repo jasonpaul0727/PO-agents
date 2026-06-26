@@ -241,8 +241,33 @@ function renderDraft(order) {
   $("#order-total").textContent = order.order_total != null ? `$${order.order_total.toFixed(2)}` : "—";
   renderStatus(order.status);
   $("#btn-release").disabled = order.status !== "ready_to_submit";
+  syncAddCustomerBtn();
   $("#items").innerHTML = order.line_items.map(itemRow).join("");
 }
+
+function syncAddCustomerBtn() {
+  const unknown = (currentOrder?.issues || []).some((i) => i.code === "UNKNOWN_CUSTOMER");
+  $("#btn-add-customer").hidden = !unknown;
+}
+
+$("#btn-add-customer").addEventListener("click", async () => {
+  const name = ($("[name=customer]").value || "").trim();
+  if (!name) { showToast("请先填写客户名", "orange"); return; }
+  try {
+    const resp = await fetch("/api/add-customer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (!resp.ok) { showToast("登记失败:" + (await resp.text()), "red"); return; }
+  } catch (err) {
+    showToast("网络错误,请重试", "red");
+    return;
+  }
+  currentOrder.issues = (currentOrder.issues || []).filter((i) => i.code !== "UNKNOWN_CUSTOMER");
+  showToast(`已登记新客户:${name}`, "green");
+  refreshStatusFromIssues();
+});
 
 function itemRow(li, idx) {
   const unknown = (currentOrder.issues || []).some(
@@ -366,8 +391,12 @@ $("#items").addEventListener("change", async (e) => {
   }
   applyLineLookup(idx, data);
 
+  // Persist the mapping immediately (on blur, NOT on release). This also lets a
+  // manual entry OVERRIDE a rule-based customer (e.g. Ollies), because the table
+  // is consulted before the rule on the next lookup.
   const customer = currentCustomer();
-  if (li._pendingMap && data.found && li.customer_item_number && customer) {
+  if (data.found && li.customer_item_number && customer) {
+    const wasNew = li._pendingMap;
     li._pendingMap = false;
     try {
       await fetch("/api/map-item", {
@@ -379,7 +408,8 @@ $("#items").addEventListener("change", async (e) => {
           item_number: li.item_number,
         }),
       });
-      showToast(`已记住:${customer} ${li.customer_item_number} → ${li.item_number}`, "green");
+      const verb = wasNew ? "已记住" : "已更新映射";
+      showToast(`${verb}:${customer} ${li.customer_item_number} → ${li.item_number}`, "green");
     } catch (err) {
       /* mapping save failed: not fatal, operator can retry */
     }
@@ -439,4 +469,5 @@ function refreshStatusFromIssues() {
   currentOrder.status = hasError ? "needs_review" : "ready_to_submit";
   renderStatus(currentOrder.status);
   $("#btn-release").disabled = currentOrder.status !== "ready_to_submit";
+  syncAddCustomerBtn();
 }

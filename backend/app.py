@@ -12,7 +12,7 @@ from backend import pipeline
 from backend.agents import draft, validation
 from backend.agents import exception as exception_agent
 from backend.agents.extraction import ExtractionError
-from backend.models import ExtractedPO, ItemMapping, OrderDraft, OrderStatus
+from backend.models import CustomerName, ExtractedPO, ItemMapping, OrderDraft, OrderStatus
 from backend.repository import Repository
 
 load_dotenv()
@@ -22,6 +22,16 @@ repo = Repository(db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SE
 
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
+
+
+@app.middleware("http")
+async def no_store_static(request, call_next):
+    """Dev convenience: never cache frontend assets, so a plain refresh always
+    loads the latest app.js/styles.css (no more stale-cache confusion)."""
+    response = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/")
@@ -90,6 +100,16 @@ def resolve_item(customer: str, customer_item_number: str, order_quantity: int |
         "warehouse_quantity": item.warehouse_quantity if found else 0,
         "inventory_commit": commit if found else 0,
     }
+
+
+@app.post("/api/add-customer")
+def add_customer(payload: CustomerName):
+    """Register a previously-unknown customer so it no longer blocks release."""
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="Customer name is required")
+    repo.add_customer(name)
+    return {"added": True, "name": name}
 
 
 @app.post("/api/map-item")

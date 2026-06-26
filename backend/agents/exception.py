@@ -5,6 +5,12 @@ def process_exceptions(po: ExtractedPO, repo) -> list[Issue]:
     """Check item existence against item master; backfill stock and auto-commit. Mutates line_items."""
     issues: list[Issue] = []
     for idx, li in enumerate(po.line_items):
+        # If the line carries the customer's own item number, resolve it to ours
+        # first (per-customer rule/table), then check against the item master.
+        if li.customer_item_number:
+            our = repo.resolve_customer_item(po.header.customer or "", li.customer_item_number)
+            if our:
+                li.item_number = our
         item = repo.find_item(li.item_number)
         if item is None:
             issues.append(Issue(severity="error", code="UNKNOWN_ITEM",
