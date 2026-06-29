@@ -75,3 +75,20 @@ def test_submit_clean_releases_and_records_po():
     assert body["released"] is True
     assert body["order"]["status"] == "released_to_warehouse"
     assert repo.is_duplicate_po("PO-3003") is True
+
+
+def test_home_page_served_at_root():
+    client = TestClient(app)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert "Acme ERP" in resp.text
+    assert "launcher" in resp.text
+    assert resp.headers["cache-control"] == "no-store"
+
+
+def test_intake_page_served_at_intake():
+    client = TestClient(app)
+    resp = client.get("/intake")
+    assert resp.status_code == 200
+    assert "Order Draft" in resp.text
+    assert resp.headers["cache-control"] == "no-store"
