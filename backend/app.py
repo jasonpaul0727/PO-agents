@@ -31,13 +31,18 @@ async def no_store_static(request, call_next):
     """Dev convenience: never cache frontend assets, so a plain refresh always
     loads the latest app.js/styles.css (no more stale-cache confusion)."""
     response = await call_next(request)
-    if request.url.path.startswith("/static") or request.url.path == "/":
+    if request.url.path.startswith("/static") or request.url.path in ("/", "/intake"):
         response.headers["Cache-Control"] = "no-store"
     return response
 
 
 @app.get("/")
 def index():
+    return FileResponse(str(FRONTEND / "home.html"))
+
+
+@app.get("/intake")
+def intake():
     return FileResponse(str(FRONTEND / "index.html"))
 
 
