@@ -37,7 +37,7 @@ async def no_store_static(request, call_next):
 
 
 @app.get("/")
-def index():
+def home():
     return FileResponse(str(FRONTEND / "home.html"))
 
 
