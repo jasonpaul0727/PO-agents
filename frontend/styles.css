@@ -750,7 +750,8 @@ select:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tile { transition: box-shadow 200ms var(--ease); }
+  /* The global rule above already forces transition-duration to ~0 via
+     !important; only the transform overrides need restating here. */
   .tile:hover { transform: none; }
   .tile:active { transform: none; }
 }
