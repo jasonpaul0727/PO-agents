@@ -163,6 +163,52 @@ def _detect_sent(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
     return count
 
 
+def _check_shipments(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
+    count = 0
+    for req in state["requests"]:
+        if req.get("status") != "released":
+            continue
+        warehouse_thread = req.get("warehouse_thread_id")
+        if not warehouse_thread:
+            continue
+        thread = gmail.fetch_thread(warehouse_thread)
+        tracking = None
+        for m in thread:
+            blob = f"{m.subject}\n{m.body}"
+            match = S.UPS_TRACKING_RE.search(blob)
+            if match:
+                tracking = match.group(0)
+                break
+        if tracking is None:
+            continue
+        if dry_run:
+            log.info(
+                "check_shipments dry-run: would mark shipped",
+                extra={
+                    "step": "check_shipments",
+                    "thread_id": req["thread_id"],
+                    "tracking": tracking,
+                },
+            )
+        else:
+            S.mark_shipped(state, req["thread_id"], tracking)
+            gmail.relabel(
+                req["original_message_id"],
+                remove=[LABEL_RELEASED],
+                add=[LABEL_SHIPPED],
+            )
+            log.info(
+                "shipped",
+                extra={
+                    "step": "check_shipments",
+                    "thread_id": req["thread_id"],
+                    "tracking": tracking,
+                },
+            )
+        count += 1
+    return count
+
+
 # ---- run_tick orchestrator ------------------------------------------------
 
 def run_tick(
@@ -188,7 +234,7 @@ def run_tick(
     try:
         result.ingested = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
         result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
-        # check_shipments / send_followups arrive in later tasks
+        result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
     except Exception as exc:           # noqa: BLE001 — surface but keep going
         log.exception("tick failed", extra={"step": "tick"})
         result.outcome = "failed"
