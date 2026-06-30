@@ -5,3 +5,8 @@ __pycache__/
 .env
 *:Zone.Identifier
 .gstack/
+# sample-request secrets and runtime artefacts
+secrets/*
+!secrets/.gitkeep
+.sample_requests_state.json.dryrun.*
+logs/sample_request_*.log*
