@@ -114,6 +114,55 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
     return count
 
 
+def _detect_sent(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
+    count = 0
+    for req in state["requests"]:
+        if req.get("status") != "draft_created":
+            continue
+        # Look for a sent message whose subject matches the release email
+        # we drafted. We don't have the draft's subject stored; reconstruct it.
+        sent = gmail.fetch_sent_to(
+            to=cfg.warehouse_email,
+            subject_prefix=f"Release Request: {req['subject']}",
+        )
+        if not sent:
+            continue
+        sent.sort(key=lambda m: m.internal_date)
+        match = sent[0]
+        if dry_run:
+            log.info(
+                "detect_sent dry-run: would mark released",
+                extra={
+                    "step": "detect_sent",
+                    "thread_id": req["thread_id"],
+                    "release_message_id": match.message_id,
+                },
+            )
+        else:
+            S.mark_released(
+                state,
+                req["thread_id"],
+                release_message_id=match.message_id,
+                warehouse_thread_id=match.thread_id,
+                released_at=match.internal_date,
+            )
+            gmail.relabel(
+                req["original_message_id"],
+                remove=[LABEL_DRAFT],
+                add=[LABEL_RELEASED],
+            )
+            log.info(
+                "detected sent",
+                extra={
+                    "step": "detect_sent",
+                    "thread_id": req["thread_id"],
+                    "release_message_id": match.message_id,
+                },
+            )
+        count += 1
+    return count
+
+
 # ---- run_tick orchestrator ------------------------------------------------
 
 def run_tick(
@@ -138,7 +187,8 @@ def run_tick(
 
     try:
         result.ingested = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
-        # detect_sent / check_shipments / send_followups arrive in later tasks
+        result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
+        # check_shipments / send_followups arrive in later tasks
     except Exception as exc:           # noqa: BLE001 — surface but keep going
         log.exception("tick failed", extra={"step": "tick"})
         result.outcome = "failed"
