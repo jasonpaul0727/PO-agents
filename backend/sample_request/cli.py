@@ -443,9 +443,38 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     return 0 if result.outcome != "failed" else 1
 
 
+def _render_status(state: dict) -> str:
+    requests = state.get("requests", [])
+    meta = state.get("meta", {})
+    header = (
+        f"last tick: {meta.get('last_tick_at') or 'never'} "
+        f"({meta.get('last_tick_outcome') or '-'})"
+    )
+    if not requests:
+        return f"{header}\nNo sample requests on file.\n"
+    lines = [header, ""]
+    lines.append(
+        f"{'thread':<22} {'status':<14} {'recipient':<20} "
+        f"{'released_at':<22} {'follow-ups':<12} {'errors':<6}"
+    )
+    lines.append("-" * 100)
+    for r in requests:
+        parsed = r.get("parsed") or {}
+        lines.append(
+            f"{r.get('thread_id','')!s:<22} "
+            f"{r.get('status','')!s:<14} "
+            f"{parsed.get('recipient','')!s:<20} "
+            f"{r.get('released_at') or '-':<22} "
+            f"follow-ups: {len(r.get('follow_ups') or [])!s:<3}  "
+            f"errors: {len(r.get('tick_errors') or [])}"
+        )
+    return "\n".join(lines) + "\n"
+
+
 def _cmd_status(args: argparse.Namespace) -> int:
-    # Full implementation in Task 16; placeholder so argparse wiring works.
-    print("status: not yet implemented — see plan Task 16")
+    cfg = load_config()
+    state = S.load_state(cfg.state_file)
+    sys.stdout.write(_render_status(state))
     return 0
 
 
