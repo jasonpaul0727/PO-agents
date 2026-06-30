@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -209,6 +210,50 @@ def _check_shipments(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> 
     return count
 
 
+def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> int:
+    count = 0
+    threshold = cfg.followup_threshold_hours
+    for req in state["requests"]:
+        if req.get("status") != "released":
+            continue
+        last = S.last_contact_at(req)
+        hours_since = (now_fn() - last).total_seconds() / 3600.0
+        if hours_since < threshold:
+            continue
+        warehouse_thread = req.get("warehouse_thread_id")
+        if not warehouse_thread:
+            continue
+        n_th = len(req.get("follow_ups", [])) + 1
+        from backend.sample_request.sender import build_followup_email
+        body = build_followup_email(req, n_th)
+        if dry_run:
+            log.info(
+                "send_followups dry-run: would reply",
+                extra={
+                    "step": "send_followups",
+                    "thread_id": req["thread_id"],
+                    "n_th": n_th,
+                },
+            )
+        else:
+            new_msg_id = gmail.reply_in_thread(warehouse_thread, body)
+            # See spec §4: 2s sleep so subsequent `last_contact_at` queries
+            # don't outrun Gmail's index update.
+            time.sleep(2)
+            S.record_followup(state, req["thread_id"], message_id=new_msg_id)
+            log.info(
+                "follow-up sent",
+                extra={
+                    "step": "send_followups",
+                    "thread_id": req["thread_id"],
+                    "n_th": n_th,
+                    "message_id": new_msg_id,
+                },
+            )
+        count += 1
+    return count
+
+
 # ---- run_tick orchestrator ------------------------------------------------
 
 def run_tick(
@@ -235,6 +280,9 @@ def run_tick(
         result.ingested = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
         result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
         result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
+        result.followups = _send_followups(
+            cfg, gmail, state, log, dry_run=dry_run, now_fn=now_fn,
+        )
     except Exception as exc:           # noqa: BLE001 — surface but keep going
         log.exception("tick failed", extra={"step": "tick"})
         result.outcome = "failed"
