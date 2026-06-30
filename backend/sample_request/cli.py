@@ -13,8 +13,9 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypeVar
 
+from googleapiclient.errors import HttpError
 from pydantic import BaseModel
 
 from backend.sample_request import state as S
@@ -22,6 +23,42 @@ from backend.sample_request.config import Config, load_config
 from backend.sample_request.log import make_tick_id, setup_logger
 from backend.sample_request.parser import ParsedRequest, parse_request_body
 from backend.sample_request.sender import build_release_email
+
+T = TypeVar("T")
+
+_TRANSIENT_STATUS = {429, 500, 502, 503, 504}
+
+
+class TransientError(Exception):
+    """Raised when retries are exhausted on a transient Gmail error."""
+
+
+def _is_transient(exc: Exception) -> bool:
+    if isinstance(exc, HttpError):
+        try:
+            return exc.resp.status in _TRANSIENT_STATUS
+        except AttributeError:
+            return False
+    return isinstance(exc, (TimeoutError, ConnectionError))
+
+
+def _retry(
+    call,
+    *,
+    retries: int = 3,
+    base: float = 1.0,
+    sleep_fn=time.sleep,
+):
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            return call()
+        except Exception as exc:                     # noqa: BLE001
+            if not _is_transient(exc):
+                raise
+            last_exc = exc
+            sleep_fn(base * (4 ** attempt))          # 1s, 4s, 16s
+    raise TransientError(str(last_exc)) from last_exc
 
 
 LABEL_PENDING = "sample-request/pending-release"
@@ -50,9 +87,38 @@ def _iso(dt: datetime) -> str:
 
 # ---- ingest step ----------------------------------------------------------
 
-def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -> int:
+def _record_pending_message_error(
+    cfg: Config, gmail, state: dict, log, msg, *,
+    step: str, exc: Exception, raw_excerpt: str | None,
+) -> None:
+    """Record a per-message error for a request that has not yet been
+    added to state (i.e. failed during ingest before `add_request`).
+    Failure counts are persisted in `state.ingest_failure_counts` (see
+    Task 4) so escalation survives across ticks. The counter is cleared
+    once the message successfully becomes a tracked request."""
+    log.error(
+        f"{step} failed",
+        extra={
+            "step": step,
+            "thread_id": msg.thread_id,
+            "error_class": exc.__class__.__name__,
+            "error": str(exc)[:500],
+        },
+    )
+    n = S.bump_ingest_failure(state, msg.message_id)
+    if n >= 3:
+        gmail.relabel(msg.message_id, remove=[], add=[LABEL_ATTENTION])
+        log.warning(
+            "needs-attention label added",
+            extra={"step": step, "thread_id": msg.thread_id, "failures": n},
+        )
+
+
+def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -> tuple[int, int]:
+    """Returns (ingested, errors)."""
     msgs = gmail.fetch_pending()
     count = 0
+    errors = 0
     for msg in msgs:
         existing = next(
             (r for r in state["requests"]
@@ -60,7 +126,6 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             None,
         )
         if existing is not None:
-            # Already in state — just restore the label invariant and move on.
             log.info(
                 "ingest skip: already in state",
                 extra={"step": "ingest", "thread_id": msg.thread_id},
@@ -71,7 +136,18 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
                 )
             continue
 
-        parsed = parser_fn(msg.body, msg.subject)
+        try:
+            parsed = parser_fn(msg.body, msg.subject)
+        except Exception as exc:                     # noqa: BLE001
+            errors += 1
+            _record_pending_message_error(
+                cfg, gmail, state, log, msg,
+                step="parser",
+                exc=exc,
+                raw_excerpt=msg.body,
+            )
+            continue
+
         subject, body = build_release_email(parsed, msg.subject, msg.from_)
 
         if dry_run:
@@ -83,36 +159,51 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
                     "subject": subject,
                 },
             )
-        else:
-            draft_id = gmail.create_draft(
+            count += 1
+            continue
+
+        try:
+            draft_id = _retry(lambda: gmail.create_draft(
                 to=cfg.warehouse_email,
                 subject=subject,
                 body=body,
                 in_reply_to=None,
+            ))
+        except Exception as exc:                     # noqa: BLE001
+            errors += 1
+            _record_pending_message_error(
+                cfg, gmail, state, log, msg,
+                step="create_draft",
+                exc=exc,
+                raw_excerpt=None,
             )
-            gmail.relabel(
-                msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
-            )
-            S.add_request(
-                state,
-                thread_id=msg.thread_id,
-                message_id=msg.message_id,
-                subject=msg.subject,
-                from_=msg.from_,
-                received_at=msg.internal_date,
-                parsed=parsed.model_dump(),
-            )
-            S.mark_draft_created(state, msg.thread_id, draft_id=draft_id)
-            log.info(
-                "draft created",
-                extra={
-                    "step": "ingest",
-                    "thread_id": msg.thread_id,
-                    "draft_id": draft_id,
-                },
-            )
+            continue
+
+        # relabel + state writes are *not* wrapped in tick_errors — relabel
+        # failure is FATAL per spec §5 (it propagates and the outer run_tick
+        # catch sets outcome="failed").
+        gmail.relabel(msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT])
+        S.add_request(
+            state,
+            thread_id=msg.thread_id,
+            message_id=msg.message_id,
+            subject=msg.subject,
+            from_=msg.from_,
+            received_at=msg.internal_date,
+            parsed=parsed.model_dump(),
+        )
+        S.mark_draft_created(state, msg.thread_id, draft_id=draft_id)
+        S.reset_ingest_failure(state, msg.message_id)
+        log.info(
+            "draft created",
+            extra={
+                "step": "ingest",
+                "thread_id": msg.thread_id,
+                "draft_id": draft_id,
+            },
+        )
         count += 1
-    return count
+    return count, errors
 
 
 def _detect_sent(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
@@ -210,8 +301,10 @@ def _check_shipments(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> 
     return count
 
 
-def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> int:
+def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> tuple[int, int]:
+    """Returns (followups_sent, errors)."""
     count = 0
+    errors = 0
     threshold = cfg.followup_threshold_hours
     for req in state["requests"]:
         if req.get("status") != "released":
@@ -235,23 +328,48 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
                     "n_th": n_th,
                 },
             )
-        else:
-            new_msg_id = gmail.reply_in_thread(warehouse_thread, body)
-            # See spec §4: 2s sleep so subsequent `last_contact_at` queries
-            # don't outrun Gmail's index update.
-            time.sleep(2)
-            S.record_followup(state, req["thread_id"], message_id=new_msg_id)
-            log.info(
-                "follow-up sent",
+            count += 1
+            continue
+        try:
+            new_msg_id = _retry(lambda: gmail.reply_in_thread(warehouse_thread, body))
+        except Exception as exc:                     # noqa: BLE001
+            errors += 1
+            n = S.append_tick_error(
+                state, req["thread_id"],
+                step="send_followups",
+                error_class=exc.__class__.__name__,
+                message=str(exc)[:500],
+            )
+            log.error(
+                "send_followups failed",
                 extra={
                     "step": "send_followups",
                     "thread_id": req["thread_id"],
-                    "n_th": n_th,
-                    "message_id": new_msg_id,
+                    "failures": n,
                 },
             )
+            if n >= 3:
+                gmail.relabel(
+                    req["original_message_id"], remove=[], add=[LABEL_ATTENTION],
+                )
+                log.warning(
+                    "needs-attention label added",
+                    extra={"step": "send_followups", "thread_id": req["thread_id"]},
+                )
+            continue
+        time.sleep(2)
+        S.record_followup(state, req["thread_id"], message_id=new_msg_id)
+        log.info(
+            "follow-up sent",
+            extra={
+                "step": "send_followups",
+                "thread_id": req["thread_id"],
+                "n_th": n_th,
+                "message_id": new_msg_id,
+            },
+        )
         count += 1
-    return count
+    return count, errors
 
 
 # ---- run_tick orchestrator ------------------------------------------------
@@ -277,13 +395,19 @@ def run_tick(
     result = TickResult()
 
     try:
-        result.ingested = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
+        ingested, ingest_errs = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
+        result.ingested = ingested
+        result.errors += ingest_errs
+
         result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
         result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
-        result.followups = _send_followups(
+
+        followups, fu_errs = _send_followups(
             cfg, gmail, state, log, dry_run=dry_run, now_fn=now_fn,
         )
-    except Exception as exc:           # noqa: BLE001 — surface but keep going
+        result.followups = followups
+        result.errors += fu_errs
+    except Exception:
         log.exception("tick failed", extra={"step": "tick"})
         result.outcome = "failed"
         S.update_meta(state, last_tick_at=_iso(now_fn()), last_tick_outcome="failed")
