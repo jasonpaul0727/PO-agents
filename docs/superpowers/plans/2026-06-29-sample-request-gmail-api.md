@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- Python: 3.12 (project baseline).
+- Python: 3.12 (project baseline). **Use the project's venv at `.venv/`** — every `python3` / `pip` / `pytest` invocation in this plan should be `.venv/bin/python3` / `.venv/bin/pip` / `.venv/bin/pytest`. The system Python is PEP-668-locked. The venv already has `anthropic`, `fastapi`, `pydantic`, etc. installed.
 - `requirements.txt` floors: `google-api-python-client>=2.140`, `google-auth>=2.34`, `google-auth-oauthlib>=1.2`, `google-auth-httplib2>=0.2`. Reuse existing `anthropic>=0.69`, `pydantic>=2.9`, `python-dotenv>=1.0`.
 - State file path: `.sample_requests_state.json` at repo root (unchanged).
 - OAuth credentials path: `secrets/credentials.json`; token cache: `secrets/token.json`. `secrets/` is gitignored.
@@ -112,11 +112,15 @@ Append at end of `.gitignore`:
 
 ```
 # sample-request secrets and runtime artefacts
-secrets/
+secrets/*
 !secrets/.gitkeep
 .sample_requests_state.json.dryrun.*
 logs/sample_request_*.log*
 ```
+
+> Note: use `secrets/*` (not `secrets/`) so the `!secrets/.gitkeep` negation
+> can override it. A trailing-slash ignore tells git to skip the directory
+> entirely, and re-inclusion patterns cannot reach into a skipped directory.
 
 - [ ] **Step 4: Create empty directory placeholders**
 
