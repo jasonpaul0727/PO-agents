@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import Mapping
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
 
 
@@ -26,6 +27,7 @@ _REQUIRED = ("SAMPLE_REQUEST_WAREHOUSE_EMAIL", "ANTHROPIC_API_KEY")
 
 def load_config(env: Mapping[str, str] | None = None) -> Config:
     if env is None:
+        load_dotenv()
         env = os.environ
 
     missing = [k for k in _REQUIRED if not env.get(k)]
