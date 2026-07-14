@@ -66,7 +66,11 @@ def load_credentials(token_path: Path, credentials_path: Path) -> Credentials:
     flow = InstalledAppFlow.from_client_secrets_file(
         str(credentials_path), GMAIL_SCOPES
     )
-    creds = flow.run_local_server(port=0)
+    # WSL-friendly: don't auto-open browser (host has no default browser),
+    # print the URL so the user can click it in Windows; 5 min timeout.
+    creds = flow.run_local_server(
+        port=0, open_browser=False, timeout_seconds=300,
+    )
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(creds.to_json())
     return creds
