@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock, patch
 
 from backend.sample_request import state as S
 from backend.sample_request.agent import (
@@ -11,9 +12,11 @@ from backend.sample_request.agent import (
     _tool_get_state_summary,
     _tool_list_pending_emails,
     _tool_list_released_requests,
+    _tool_parse_email_content,
     _tool_read_warehouse_thread,
     build_tools,
 )
+from backend.sample_request.parser import ParsedItem, ParsedRequest, ParserRefused
 from backend.sample_request.tests.fake_gmail import FakeGmailClient
 
 
@@ -151,7 +154,46 @@ def test_check_sent_folder_returns_matching_sent_msgs():
     assert matches[0]["subject"].startswith("Release Request")
 
 
-def test_build_tools_returns_five_tools_after_task_3():
-    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(),
-                       state=S._empty_state())
-    assert len(build_tools(ctx)) == 5
+class _CfgWithModel(_Cfg):
+    po_model = "claude-opus-4-8"
+    anthropic_api_key = "sk-test"
+
+
+def _ctx_with_ant(ant_client=None):
+    return AgentContext(
+        gmail=FakeGmailClient(), cfg=_CfgWithModel(),
+        state=S._empty_state(), ant_client=ant_client or MagicMock(),
+    )
+
+
+def test_parse_email_content_success():
+    parsed = ParsedRequest(
+        recipient="Alice", address="1 Main St",
+        items=[ParsedItem(name="cup", qty=2)],
+    )
+    ctx = _ctx_with_ant()
+    with patch(
+        "backend.sample_request.agent.parse_request_body", return_value=parsed
+    ) as p:
+        result = json.loads(_tool_parse_email_content(
+            ctx, subject="s", body="please send 2 cups to Alice"))
+    p.assert_called_once()
+    assert result["ok"] is True
+    assert result["parsed"]["recipient"] == "Alice"
+    assert result["parsed"]["items"][0]["name"] == "cup"
+
+
+def test_parse_email_content_returns_error_on_refusal():
+    ctx = _ctx_with_ant()
+    with patch(
+        "backend.sample_request.agent.parse_request_body",
+        side_effect=ParserRefused("nope"),
+    ):
+        result = json.loads(_tool_parse_email_content(ctx, "s", "b"))
+    assert result["ok"] is False
+    assert result["error_class"] == "ParserRefused"
+    assert "nope" in result["message"]
+
+
+def test_build_tools_returns_six_tools_after_task_4():
+    assert len(build_tools(_ctx_with_ant())) == 6

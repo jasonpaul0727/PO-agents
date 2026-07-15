@@ -16,6 +16,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.sample_request.parser import parse_request_body
+
 
 SYSTEM_PROMPT = """You are the sample-request operations agent for a sales team.
 
@@ -59,6 +61,7 @@ class AgentContext:
     gmail: Any                      # GmailClient or FakeGmailClient
     cfg: Any                        # Config (avoid import to keep tests light)
     state: dict
+    ant_client: Any = None          # optional in tests where parser is stubbed
     log: logging.Logger = field(
         default_factory=lambda: logging.getLogger("sample_request.agent")
     )
@@ -154,6 +157,22 @@ def _tool_check_sent_folder(ctx: AgentContext, subject_prefix: str) -> str:
     return json.dumps(payload)
 
 
+def _tool_parse_email_content(ctx: AgentContext, subject: str, body: str) -> str:
+    try:
+        parsed = parse_request_body(
+            body, subject,
+            client=ctx.ant_client,
+            model=ctx.cfg.po_model,
+        )
+    except Exception as exc:            # noqa: BLE001
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    return json.dumps({"ok": True, "parsed": parsed.model_dump()})
+
+
 def build_tools(ctx: AgentContext) -> list:
     """Build the list of @beta_tool-decorated functions bound to ctx."""
     from anthropic import beta_tool
@@ -205,7 +224,20 @@ def build_tools(ctx: AgentContext) -> list:
         """
         return _tool_check_sent_folder(ctx, subject_prefix)
 
+    @beta_tool
+    def parse_email_content(subject: str, body: str) -> str:
+        """Extract structured fields (recipient, address, items) from an email body.
+
+        Internally invokes a separate Claude call for strict-schema extraction.
+        Call this once per new pending email before creating a draft.
+        Returns JSON: on success {"ok": true, "parsed": {recipient, address,
+        items: [{name, qty, qty_unit, item_number}]}}; on failure
+        {"ok": false, "error_class": str, "message": str}.
+        """
+        return _tool_parse_email_content(ctx, subject, body)
+
     return [
         list_pending_emails, list_released_requests, get_state_summary,
         read_warehouse_thread, check_sent_folder,
+        parse_email_content,
     ]
