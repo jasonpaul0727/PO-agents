@@ -7,9 +7,11 @@ from backend.sample_request import state as S
 from backend.sample_request.agent import (
     AgentContext,
     SYSTEM_PROMPT,
+    _tool_check_sent_folder,
     _tool_get_state_summary,
     _tool_list_pending_emails,
     _tool_list_released_requests,
+    _tool_read_warehouse_thread,
     build_tools,
 )
 from backend.sample_request.tests.fake_gmail import FakeGmailClient
@@ -106,7 +108,50 @@ def test_get_state_summary_counts_by_status():
     }
 
 
-def test_build_tools_returns_three_tools_after_task_2():
-    ctx = _make_ctx()
-    tools = build_tools(ctx)
-    assert len(tools) == 3
+class _Cfg:
+    warehouse_email = "warehouse@example.com"
+
+
+def test_read_warehouse_thread_returns_all_messages_in_thread():
+    gmail = FakeGmailClient()
+    # Seed a sent release message so the thread exists.
+    rec = gmail.inject_sent(
+        to="warehouse@example.com",
+        subject="Release Request: samples",
+        body="please release",
+    )
+    thread_id = rec["thread_id"]
+    gmail.inject_thread_reply(thread_id, from_="warehouse@example.com",
+                              body="Shipped, tracking 1ZA123456789012345")
+    ctx = AgentContext(gmail=gmail, cfg=_Cfg(), state=S._empty_state())
+    payload = json.loads(_tool_read_warehouse_thread(ctx, thread_id))
+    assert len(payload) == 2
+    assert "1ZA123456789012345" in payload[1]["body_excerpt"]
+    assert payload[0]["from"] == "me@example.com"
+
+
+def test_read_warehouse_thread_empty_for_unknown_thread():
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(),
+                       state=S._empty_state())
+    assert json.loads(_tool_read_warehouse_thread(ctx, "nope")) == []
+
+
+def test_check_sent_folder_returns_matching_sent_msgs():
+    gmail = FakeGmailClient()
+    gmail.inject_sent(to="warehouse@example.com",
+                      subject="Release Request: Please send samples",
+                      body="x")
+    gmail.inject_sent(to="warehouse@example.com",
+                      subject="Unrelated email",
+                      body="y")
+    ctx = AgentContext(gmail=gmail, cfg=_Cfg(), state=S._empty_state())
+    matches = json.loads(_tool_check_sent_folder(
+        ctx, "Release Request: Please send samples"))
+    assert len(matches) == 1
+    assert matches[0]["subject"].startswith("Release Request")
+
+
+def test_build_tools_returns_five_tools_after_task_3():
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(),
+                       state=S._empty_state())
+    assert len(build_tools(ctx)) == 5

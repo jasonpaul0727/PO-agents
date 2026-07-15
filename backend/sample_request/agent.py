@@ -122,6 +122,38 @@ def _tool_get_state_summary(ctx: AgentContext) -> str:
     })
 
 
+def _tool_read_warehouse_thread(ctx: AgentContext, thread_id: str) -> str:
+    msgs = ctx.gmail.fetch_thread(thread_id)
+    payload = [
+        {
+            "message_id": m.message_id,
+            "from": m.from_,
+            "subject": m.subject,
+            "body_excerpt": (m.body or "")[:2000],
+            "internal_date": m.internal_date,
+        }
+        for m in msgs
+    ]
+    return json.dumps(payload)
+
+
+def _tool_check_sent_folder(ctx: AgentContext, subject_prefix: str) -> str:
+    msgs = ctx.gmail.fetch_sent_to(
+        to=ctx.cfg.warehouse_email,
+        subject_prefix=subject_prefix,
+    )
+    payload = [
+        {
+            "message_id": m.message_id,
+            "thread_id": m.thread_id,
+            "subject": m.subject,
+            "internal_date": m.internal_date,
+        }
+        for m in msgs
+    ]
+    return json.dumps(payload)
+
+
 def build_tools(ctx: AgentContext) -> list:
     """Build the list of @beta_tool-decorated functions bound to ctx."""
     from anthropic import beta_tool
@@ -153,4 +185,27 @@ def build_tools(ctx: AgentContext) -> list:
         """
         return _tool_get_state_summary(ctx)
 
-    return [list_pending_emails, list_released_requests, get_state_summary]
+    @beta_tool
+    def read_warehouse_thread(thread_id: str) -> str:
+        """Read all messages in a warehouse thread.
+
+        Use this to look for a UPS tracking number in the warehouse's reply.
+        UPS format: 1Z followed by 16 alphanumeric chars, e.g. 1ZA123456789012345.
+        Returns JSON array of {message_id, from, subject, body_excerpt, internal_date}.
+        """
+        return _tool_read_warehouse_thread(ctx, thread_id)
+
+    @beta_tool
+    def check_sent_folder(subject_prefix: str) -> str:
+        """Check the Sent folder for messages to the warehouse matching a subject prefix.
+
+        Use this to detect drafts the user has manually sent. Typical
+        subject_prefix: 'Release Request: <original subject>'.
+        Returns JSON array of {message_id, thread_id, subject, internal_date}.
+        """
+        return _tool_check_sent_folder(ctx, subject_prefix)
+
+    return [
+        list_pending_emails, list_released_requests, get_state_summary,
+        read_warehouse_thread, check_sent_folder,
+    ]
