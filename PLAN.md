@@ -90,10 +90,10 @@ Expected end-state: **135 tests passing** (102 baseline + 33 new).
 
 | Task | Status | Attempts | Commits | Notes |
 |---|---|---|---|---|
-| 1  | ⏳ pending | 0 | — | — |
-| 2  | ⏳ pending | 0 | — | — |
-| 3  | ⏳ pending | 0 | — | — |
-| 4  | ⏳ pending | 0 | — | — |
+| 1  | ✅ done | 1 (controller) | 9a858b0 | scaffolding, 3 tests, self-review |
+| 2  | ✅ done | 1 (controller) | 2744332 | 3 read tools, 4 tests, self-review |
+| 3  | ✅ done | 1 impl + 1 review | b1e5a16 | SDD; reviewer approved; deleted stale `_after_task_2` counter test |
+| 4  | ✅ done | 1 impl + 1 review | 8b6db3c | SDD; nested-Claude parse tool; AgentContext.ant_client field added |
 | 5  | ⏳ pending | 0 | — | — |
 | 6  | ⏳ pending | 0 | — | — |
 | 7  | ⏳ pending | 0 | — | — |
