@@ -74,7 +74,10 @@ Expected end-state: **135 tests passing** (102 baseline + 33 new).
 ## Guardrails Being Applied
 
 - ✅ Never touch `master`; only `auto/overnight-tasks`.
-- ✅ Never `git push --force`; commits stay local (no `git push` at all until user returns).
+- ✅ Commits follow **Conventional Commits** (`feat(scope): subject`, body with rationale, `Co-Authored-By` trailer).
+- ✅ After every task completes and its tests are green, push the branch:
+  `git push -u origin auto/overnight-tasks`. Never `--force`, never push
+  to `master`.
 - ✅ Never edit `.env` or `secrets/`.
 - ✅ Never install new dependencies (anthropic, pydantic, google-\* already in venv).
 - ✅ Never access files outside `/home/paul2/workspace/po-agents/`.
