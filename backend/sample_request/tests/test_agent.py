@@ -195,5 +195,72 @@ def test_parse_email_content_returns_error_on_refusal():
     assert "nope" in result["message"]
 
 
-def test_build_tools_returns_six_tools_after_task_4():
-    assert len(build_tools(_ctx_with_ant())) == 6
+from backend.sample_request.agent import _tool_create_release_draft
+
+
+def test_create_release_draft_creates_draft_and_updates_state():
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(
+        from_="c@example.com", to="sales@example.com",
+        subject="need samples", body="send 2 cups to Alice",
+    )
+    ctx = AgentContext(
+        gmail=gmail, cfg=_CfgWithModel(), state=S._empty_state(),
+    )
+    parsed = {
+        "recipient": "Alice", "address": "1 Main St",
+        "items": [{"name": "cup", "qty": 2, "qty_unit": "each",
+                   "item_number": None}],
+    }
+    result = json.loads(_tool_create_release_draft(
+        ctx,
+        thread_id=msg.thread_id, message_id=msg.message_id,
+        subject=msg.subject, from_=msg.from_,
+        received_at=msg.internal_date,
+        parsed_json_str=json.dumps(parsed),
+    ))
+    assert result["ok"] is True
+    assert result["draft_id"].startswith("draft-")
+    # State updated
+    req = S.find_request(ctx.state, msg.thread_id)
+    assert req is not None
+    assert req["status"] == "draft_created"
+    assert req["draft_id"] == result["draft_id"]
+    # Labels updated
+    labels = gmail.labels_on(msg.message_id)
+    assert "sample-request/pending-release" not in labels
+    assert "sample-request/draft-ready" in labels
+    # Counter bumped
+    assert ctx.actions["ingested"] == 1
+
+
+def test_create_release_draft_returns_error_on_duplicate():
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(
+        from_="c@example.com", to="sales@example.com",
+        subject="s", body="b",
+    )
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(),
+                       state=S._empty_state())
+    parsed = {"recipient": "A", "address": "x",
+              "items": [{"name": "cup", "qty": 1}]}
+    # First call succeeds
+    _tool_create_release_draft(
+        ctx, thread_id=msg.thread_id, message_id=msg.message_id,
+        subject=msg.subject, from_=msg.from_,
+        received_at=msg.internal_date,
+        parsed_json_str=json.dumps(parsed),
+    )
+    # Second call is a duplicate
+    result = json.loads(_tool_create_release_draft(
+        ctx, thread_id=msg.thread_id, message_id=msg.message_id,
+        subject=msg.subject, from_=msg.from_,
+        received_at=msg.internal_date,
+        parsed_json_str=json.dumps(parsed),
+    ))
+    assert result["ok"] is False
+    assert result["error_class"] == "ValueError"
+
+
+def test_build_tools_returns_seven_tools_after_task_5():
+    assert len(build_tools(_ctx_with_ant())) == 7

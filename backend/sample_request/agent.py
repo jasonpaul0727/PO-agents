@@ -16,7 +16,12 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.sample_request.parser import parse_request_body
+from backend.sample_request import state as S
+from backend.sample_request.cli import (
+    LABEL_PENDING, LABEL_DRAFT, LABEL_RELEASED, LABEL_SHIPPED, LABEL_ATTENTION,
+)
+from backend.sample_request.parser import ParsedRequest, parse_request_body
+from backend.sample_request.sender import build_release_email
 
 
 SYSTEM_PROMPT = """You are the sample-request operations agent for a sales team.
@@ -173,6 +178,48 @@ def _tool_parse_email_content(ctx: AgentContext, subject: str, body: str) -> str
     return json.dumps({"ok": True, "parsed": parsed.model_dump()})
 
 
+def _tool_create_release_draft(
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    message_id: str,
+    subject: str,
+    from_: str,
+    received_at: str,
+    parsed_json_str: str,
+) -> str:
+    try:
+        parsed_dict = json.loads(parsed_json_str)
+        parsed = ParsedRequest(**parsed_dict)
+        rel_subject, rel_body = build_release_email(parsed, subject, from_)
+        draft_id = ctx.gmail.create_draft(
+            to=ctx.cfg.warehouse_email,
+            subject=rel_subject,
+            body=rel_body,
+            in_reply_to=None,
+        )
+        ctx.gmail.relabel(
+            message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+        )
+        S.add_request(
+            ctx.state,
+            thread_id=thread_id, message_id=message_id,
+            subject=subject, from_=from_, received_at=received_at,
+            parsed=parsed.model_dump(),
+        )
+        S.mark_draft_created(ctx.state, thread_id, draft_id=draft_id)
+        S.reset_ingest_failure(ctx.state, message_id)
+    except Exception as exc:                # noqa: BLE001
+        ctx.actions["errors"] += 1
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["ingested"] += 1
+    return json.dumps({"ok": True, "draft_id": draft_id})
+
+
 def build_tools(ctx: AgentContext) -> list:
     """Build the list of @beta_tool-decorated functions bound to ctx."""
     from anthropic import beta_tool
@@ -236,8 +283,28 @@ def build_tools(ctx: AgentContext) -> list:
         """
         return _tool_parse_email_content(ctx, subject, body)
 
+    @beta_tool
+    def create_release_draft(
+        thread_id: str, message_id: str, subject: str, from_: str,
+        received_at: str, parsed_json_str: str,
+    ) -> str:
+        """Create a Gmail draft to the warehouse, register the request in state,
+        and transition the pending email's label to draft-ready.
+
+        parsed_json_str: the "parsed" object from parse_email_content, re-serialized
+        as a JSON string.
+        Returns JSON {"ok": true, "draft_id": str} or
+        {"ok": false, "error_class": str, "message": str}.
+        """
+        return _tool_create_release_draft(
+            ctx,
+            thread_id=thread_id, message_id=message_id,
+            subject=subject, from_=from_, received_at=received_at,
+            parsed_json_str=parsed_json_str,
+        )
+
     return [
         list_pending_emails, list_released_requests, get_state_summary,
         read_warehouse_thread, check_sent_folder,
-        parse_email_content,
+        parse_email_content, create_release_draft,
     ]
