@@ -11,6 +11,7 @@ bodies and inside run_agent_tick.
 """
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any
@@ -71,10 +72,85 @@ class AgentContext:
     })
 
 
-def build_tools(ctx: AgentContext) -> list:
-    """Build the list of @beta_tool-decorated functions bound to ctx.
+def _tool_list_pending_emails(ctx: AgentContext) -> str:
+    msgs = ctx.gmail.fetch_pending()
+    payload = [
+        {
+            "message_id": m.message_id,
+            "thread_id": m.thread_id,
+            "from": m.from_,
+            "subject": m.subject,
+            "body_excerpt": (m.body or "")[:2000],
+            "received_at": m.internal_date,
+        }
+        for m in msgs
+    ]
+    return json.dumps(payload)
 
-    Populated in subsequent tasks. Returns [] while empty so
-    run_agent_tick can be exercised end-to-end during scaffolding.
-    """
-    return []
+
+def _tool_list_released_requests(ctx: AgentContext) -> str:
+    out = []
+    for req in ctx.state.get("requests", []):
+        if req.get("status") != "released":
+            continue
+        parsed = req.get("parsed") or {}
+        out.append({
+            "thread_id": req["thread_id"],
+            "recipient": parsed.get("recipient", ""),
+            "released_at": req.get("released_at"),
+            "warehouse_thread_id": req.get("warehouse_thread_id"),
+            "follow_ups_count": len(req.get("follow_ups") or []),
+        })
+    return json.dumps(out)
+
+
+def _tool_get_state_summary(ctx: AgentContext) -> str:
+    reqs = ctx.state.get("requests", [])
+    by_status: dict[str, int] = {}
+    for r in reqs:
+        s = r.get("status", "unknown")
+        by_status[s] = by_status.get(s, 0) + 1
+    return json.dumps({
+        "total": len(reqs),
+        "by_status": by_status,
+        "needs_attention_flagged": sum(
+            1 for r in reqs if any(
+                e.get("step") == "flag_needs_attention"
+                for e in r.get("tick_errors") or []
+            )
+        ),
+    })
+
+
+def build_tools(ctx: AgentContext) -> list:
+    """Build the list of @beta_tool-decorated functions bound to ctx."""
+    from anthropic import beta_tool
+
+    @beta_tool
+    def list_pending_emails() -> str:
+        """List sample-request emails labeled 'pending-release' that still need drafts.
+
+        Returns a JSON array. Each entry: {message_id, thread_id, from,
+        subject, body_excerpt, received_at}. body_excerpt is capped at 2000 chars.
+        """
+        return _tool_list_pending_emails(ctx)
+
+    @beta_tool
+    def list_released_requests() -> str:
+        """List released requests that are not yet shipped.
+
+        Returns a JSON array. Each entry: {thread_id, recipient,
+        released_at, warehouse_thread_id, follow_ups_count}.
+        """
+        return _tool_list_released_requests(ctx)
+
+    @beta_tool
+    def get_state_summary() -> str:
+        """Return a high-level summary of current request state.
+
+        Returns a JSON object: {total, by_status: {status: count},
+        needs_attention_flagged: count}.
+        """
+        return _tool_get_state_summary(ctx)
+
+    return [list_pending_emails, list_released_requests, get_state_summary]
