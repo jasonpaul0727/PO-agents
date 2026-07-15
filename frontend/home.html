@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Acme ERP</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="home-body">
+  <header class="home-bar">
+    <div class="brand">◆ Acme ERP</div>
+  </header>
+
+  <main class="home">
+    <h1 id="greeting" class="home-title">Good afternoon</h1>
+    <p class="home-subtitle">选择一个工作流开始</p>
+
+    <nav class="launcher" aria-label="模块">
+      <a class="tile" href="/intake">
+        <span class="tile-icon" aria-hidden="true">📄</span>
+        <span class="tile-name">PO Intake</span>
+        <span class="tile-sub">录入采购订单</span>
+        <span class="tile-pill ok">可用</span>
+      </a>
+
+      <button type="button" class="tile" data-soon aria-label="Sample Request,即将上线">
+        <span class="tile-icon" aria-hidden="true">🧪</span>
+        <span class="tile-name">Sample Request</span>
+        <span class="tile-sub">创建样品申请</span>
+        <span class="tile-pill">即将上线</span>
+      </button>
+
+      <button type="button" class="tile" data-soon aria-label="Ship / Carrier,即将上线">
+        <span class="tile-icon" aria-hidden="true">🚚</span>
+        <span class="tile-name">Ship / Carrier</span>
+        <span class="tile-sub">发货与承运管理</span>
+        <span class="tile-pill">即将上线</span>
+      </button>
+
+      <button type="button" class="tile" data-soon aria-label="Master Data,即将上线">
+        <span class="tile-icon" aria-hidden="true">👥</span>
+        <span class="tile-name">Master Data</span>
+        <span class="tile-sub">客户与物料主数据</span>
+        <span class="tile-pill">即将上线</span>
+      </button>
+    </nav>
+  </main>
+
+  <div id="toast-host" aria-live="polite"></div>
+  <script src="/static/home.js"></script>
+</body>
+</html>
