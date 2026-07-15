@@ -220,6 +220,57 @@ def _tool_create_release_draft(
     return json.dumps({"ok": True, "draft_id": draft_id})
 
 
+def _tool_mark_release_sent(
+    ctx: AgentContext, *,
+    thread_id: str, release_message_id: str,
+    warehouse_thread_id: str, released_at: str,
+) -> str:
+    try:
+        req = S.find_request(ctx.state, thread_id)
+        if req is None:
+            raise KeyError(f"thread_id not found: {thread_id}")
+        S.mark_released(
+            ctx.state, thread_id,
+            release_message_id=release_message_id,
+            warehouse_thread_id=warehouse_thread_id,
+            released_at=released_at,
+        )
+        ctx.gmail.relabel(
+            req["original_message_id"],
+            remove=[LABEL_DRAFT], add=[LABEL_RELEASED],
+        )
+    except Exception as exc:                # noqa: BLE001
+        ctx.actions["errors"] += 1
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["detected_sent"] += 1
+    return json.dumps({"ok": True})
+
+
+def _tool_mark_shipped(
+    ctx: AgentContext, *, thread_id: str, ups_tracking_no: str,
+) -> str:
+    try:
+        S.mark_shipped(ctx.state, thread_id, ups_tracking_no)
+        req = S.find_request(ctx.state, thread_id)
+        ctx.gmail.relabel(
+            req["original_message_id"],
+            remove=[LABEL_RELEASED], add=[LABEL_SHIPPED],
+        )
+    except Exception as exc:                # noqa: BLE001
+        ctx.actions["errors"] += 1
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["shipped"] += 1
+    return json.dumps({"ok": True})
+
+
 def build_tools(ctx: AgentContext) -> list:
     """Build the list of @beta_tool-decorated functions bound to ctx."""
     from anthropic import beta_tool
@@ -303,8 +354,41 @@ def build_tools(ctx: AgentContext) -> list:
             parsed_json_str=parsed_json_str,
         )
 
+    @beta_tool
+    def mark_release_sent(
+        thread_id: str, release_message_id: str,
+        warehouse_thread_id: str, released_at: str,
+    ) -> str:
+        """Record that the user has sent the release draft.
+
+        Call this after check_sent_folder finds a matching sent message.
+        Transitions state from draft_created to released and moves the
+        Gmail label from draft-ready to released.
+        released_at: ISO UTC timestamp string.
+        """
+        return _tool_mark_release_sent(
+            ctx, thread_id=thread_id,
+            release_message_id=release_message_id,
+            warehouse_thread_id=warehouse_thread_id,
+            released_at=released_at,
+        )
+
+    @beta_tool
+    def mark_shipped(thread_id: str, ups_tracking_no: str) -> str:
+        """Record that the warehouse has shipped the sample.
+
+        Call this AFTER read_warehouse_thread returns a UPS tracking
+        number (format: 1Z + 16 alphanumeric chars). Transitions state
+        to shipped and moves the label. Rejects tracking strings that
+        don't match the UPS regex.
+        """
+        return _tool_mark_shipped(
+            ctx, thread_id=thread_id, ups_tracking_no=ups_tracking_no,
+        )
+
     return [
         list_pending_emails, list_released_requests, get_state_summary,
         read_warehouse_thread, check_sent_folder,
         parse_email_content, create_release_draft,
+        mark_release_sent, mark_shipped,
     ]

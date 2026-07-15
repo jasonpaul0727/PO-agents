@@ -262,5 +262,73 @@ def test_create_release_draft_returns_error_on_duplicate():
     assert result["error_class"] == "ValueError"
 
 
-def test_build_tools_returns_seven_tools_after_task_5():
-    assert len(build_tools(_ctx_with_ant())) == 7
+from backend.sample_request.agent import (
+    _tool_mark_release_sent, _tool_mark_shipped,
+)
+
+
+def test_mark_release_sent_transitions_state_and_labels():
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id=msg.thread_id, message_id=msg.message_id,
+        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "A", "address": "x", "items": []},
+    )
+    S.mark_draft_created(state, msg.thread_id, draft_id="d1")
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
+    result = json.loads(_tool_mark_release_sent(
+        ctx,
+        thread_id=msg.thread_id,
+        release_message_id="sent-1",
+        warehouse_thread_id="wt-1",
+        released_at="2026-07-14T01:00:00Z",
+    ))
+    assert result["ok"] is True
+    req = S.find_request(state, msg.thread_id)
+    assert req["status"] == "released"
+    assert req["warehouse_thread_id"] == "wt-1"
+    labels = gmail.labels_on(msg.message_id)
+    assert "sample-request/released" in labels
+    assert ctx.actions["detected_sent"] == 1
+
+
+def test_mark_shipped_transitions_and_validates_tracking():
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id=msg.thread_id, message_id=msg.message_id,
+        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "A", "address": "x", "items": []},
+    )
+    S.mark_draft_created(state, msg.thread_id, draft_id="d1")
+    S.mark_released(state, msg.thread_id, release_message_id="r1",
+                    warehouse_thread_id="wt-1",
+                    released_at="2026-07-14T01:00:00Z")
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
+
+    # Valid UPS number (18 chars: 1Z + 16 alphanumeric).
+    result = json.loads(_tool_mark_shipped(
+        ctx, thread_id=msg.thread_id,
+        ups_tracking_no="1ZA123456789012345",
+    ))
+    assert result["ok"] is True
+    assert S.find_request(state, msg.thread_id)["status"] == "shipped"
+    assert "sample-request/shipped" in gmail.labels_on(msg.message_id)
+    assert ctx.actions["shipped"] == 1
+
+
+def test_mark_shipped_rejects_bad_tracking_string():
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(),
+                       state=S._empty_state())
+    result = json.loads(_tool_mark_shipped(
+        ctx, thread_id="t1", ups_tracking_no="NOTATRACKINGNUMBER",
+    ))
+    assert result["ok"] is False
+    assert result["error_class"] == "ValueError"
+
+
+def test_build_tools_returns_nine_tools_after_task_6():
+    assert len(build_tools(_ctx_with_ant())) == 9
