@@ -20,6 +20,33 @@ The shim `scripts/sample_followup_tick.py` delegates to `cli.main`. The
 legacy subcommands `plan` / `mark-shipped` / `record-followup` are no longer
 exposed — use `tick` / `status` instead.
 
+## Execution Modes: Workflow vs Agent
+
+The `tick` subcommand supports two execution modes:
+
+### Workflow mode (default)
+
+```
+.venv/bin/python3 -m backend.sample_request tick
+```
+
+Runs the hardcoded 4-step pipeline: ingest → detect_sent → check_shipments →
+send_followups. Deterministic, cheap (~$0.005/tick — one Claude call for
+parsing), fast. Use this for production cron.
+
+### Agent mode (`--agent`)
+
+```
+.venv/bin/python3 -m backend.sample_request tick --agent
+```
+
+Runs Claude as a tool-using agent with 12 fine-grained tools. Claude decides
+which tools to call in what order each tick. Non-deterministic, more
+expensive (~$0.10–0.30/tick), slower. Use this to demo agentic behavior
+or when you want the flexibility of "Claude figures out what to do".
+
+See `AGENT.md` for the tool inventory, system prompt, and trade-offs.
+
 ## One-time setup
 
 1. **Google Cloud Console**
