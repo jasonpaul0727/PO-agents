@@ -21,7 +21,7 @@ from backend.sample_request.cli import (
     LABEL_PENDING, LABEL_DRAFT, LABEL_RELEASED, LABEL_SHIPPED, LABEL_ATTENTION,
 )
 from backend.sample_request.parser import ParsedRequest, parse_request_body
-from backend.sample_request.sender import build_release_email
+from backend.sample_request.sender import build_release_email, build_followup_email
 
 
 SYSTEM_PROMPT = """You are the sample-request operations agent for a sales team.
@@ -271,6 +271,71 @@ def _tool_mark_shipped(
     return json.dumps({"ok": True})
 
 
+def _tool_send_followup_reply(
+    ctx: AgentContext, *, thread_id: str, escalation_level: int,
+) -> str:
+    try:
+        req = S.find_request(ctx.state, thread_id)
+        if req is None:
+            raise KeyError(f"thread_id not found: {thread_id}")
+        warehouse_thread = req.get("warehouse_thread_id")
+        if not warehouse_thread:
+            raise ValueError(f"no warehouse_thread_id for {thread_id}")
+        body = build_followup_email(req, escalation_level)
+        reply_id = ctx.gmail.reply_in_thread(warehouse_thread, body)
+        S.record_followup(ctx.state, thread_id, message_id=reply_id)
+    except Exception as exc:                # noqa: BLE001
+        ctx.actions["errors"] += 1
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["followups"] += 1
+    return json.dumps({"ok": True, "reply_message_id": reply_id})
+
+
+def _tool_flag_needs_attention(
+    ctx: AgentContext, *, message_id: str, reason: str,
+) -> str:
+    try:
+        ctx.gmail.relabel(message_id, remove=[], add=[LABEL_ATTENTION])
+        ctx.log.warning(
+            "needs-attention flagged",
+            extra={"message_id": message_id, "reason": reason[:200]},
+        )
+    except Exception as exc:                # noqa: BLE001
+        ctx.actions["errors"] += 1
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["flagged"] += 1
+    return json.dumps({"ok": True})
+
+
+def _tool_record_failure(
+    ctx: AgentContext, *,
+    thread_id: str, step: str, error_message: str,
+) -> str:
+    try:
+        n = S.append_tick_error(
+            ctx.state, thread_id,
+            step=step,
+            error_class="AgentReported",
+            message=error_message,
+        )
+    except Exception as exc:                # noqa: BLE001
+        return json.dumps({
+            "ok": False,
+            "error_class": exc.__class__.__name__,
+            "message": str(exc)[:500],
+        })
+    ctx.actions["errors"] += 1
+    return json.dumps({"ok": True, "failure_count": n})
+
+
 def build_tools(ctx: AgentContext) -> list:
     """Build the list of @beta_tool-decorated functions bound to ctx."""
     from anthropic import beta_tool
@@ -386,9 +451,47 @@ def build_tools(ctx: AgentContext) -> list:
             ctx, thread_id=thread_id, ups_tracking_no=ups_tracking_no,
         )
 
+    @beta_tool
+    def send_followup_reply(thread_id: str, escalation_level: int) -> str:
+        """Send an escalating follow-up reply in the warehouse thread.
+
+        escalation_level: 1 = gentle nudge, 2 = firmer ping,
+        3+ = final warning.
+        Returns JSON {"ok": true, "reply_message_id": str} or error.
+        """
+        return _tool_send_followup_reply(
+            ctx, thread_id=thread_id, escalation_level=escalation_level,
+        )
+
+    @beta_tool
+    def flag_needs_attention(message_id: str, reason: str) -> str:
+        """Add the needs-attention label to a Gmail message.
+
+        Use this after 3+ consecutive failures on the same request.
+        Also useful for messages that are ambiguous or need human review.
+        """
+        return _tool_flag_needs_attention(
+            ctx, message_id=message_id, reason=reason,
+        )
+
+    @beta_tool
+    def record_failure(
+        thread_id: str, step: str, error_message: str,
+    ) -> str:
+        """Record a failure for a specific request; returns the cumulative count.
+
+        Call this whenever a tool returns ok=false so failure counts
+        persist across ticks. When failure_count reaches 3, follow up
+        with flag_needs_attention.
+        """
+        return _tool_record_failure(
+            ctx, thread_id=thread_id, step=step, error_message=error_message,
+        )
+
     return [
         list_pending_emails, list_released_requests, get_state_summary,
         read_warehouse_thread, check_sent_folder,
         parse_email_content, create_release_draft,
         mark_release_sent, mark_shipped,
+        send_followup_reply, flag_needs_attention, record_failure,
     ]

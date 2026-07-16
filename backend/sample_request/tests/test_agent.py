@@ -9,11 +9,14 @@ from backend.sample_request.agent import (
     AgentContext,
     SYSTEM_PROMPT,
     _tool_check_sent_folder,
+    _tool_flag_needs_attention,
     _tool_get_state_summary,
     _tool_list_pending_emails,
     _tool_list_released_requests,
     _tool_parse_email_content,
     _tool_read_warehouse_thread,
+    _tool_record_failure,
+    _tool_send_followup_reply,
     build_tools,
 )
 from backend.sample_request.parser import ParsedItem, ParsedRequest, ParserRefused
@@ -330,5 +333,68 @@ def test_mark_shipped_rejects_bad_tracking_string():
     assert result["error_class"] == "ValueError"
 
 
-def test_build_tools_returns_nine_tools_after_task_6():
-    assert len(build_tools(_ctx_with_ant())) == 9
+def test_send_followup_reply_replies_in_warehouse_thread():
+    gmail = FakeGmailClient()
+    # Seed a warehouse thread
+    rec = gmail.inject_sent(to="warehouse@example.com",
+                            subject="Release Request: x",
+                            body="please release")
+    warehouse_tid = rec["thread_id"]
+    msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id=msg.thread_id, message_id=msg.message_id,
+        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "Alice", "address": "x",
+                "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}]},
+    )
+    S.mark_draft_created(state, msg.thread_id, draft_id="d1")
+    S.mark_released(state, msg.thread_id, release_message_id="r1",
+                    warehouse_thread_id=warehouse_tid,
+                    released_at="2026-07-14T01:00:00Z")
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
+    result = json.loads(_tool_send_followup_reply(
+        ctx, thread_id=msg.thread_id, escalation_level=1,
+    ))
+    assert result["ok"] is True
+    assert "reply_message_id" in result
+    req = S.find_request(state, msg.thread_id)
+    assert len(req["follow_ups"]) == 1
+    assert ctx.actions["followups"] == 1
+
+
+def test_flag_needs_attention_adds_label():
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(),
+                       state=S._empty_state())
+    result = json.loads(_tool_flag_needs_attention(
+        ctx, message_id=msg.message_id, reason="repeatedly failed",
+    ))
+    assert result["ok"] is True
+    assert "sample-request/needs-attention" in gmail.labels_on(msg.message_id)
+    assert ctx.actions["flagged"] == 1
+
+
+def test_record_failure_appends_and_returns_count():
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id="t1", message_id="m1", subject="s",
+        from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "A", "address": "x", "items": []},
+    )
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(),
+                       state=state)
+    r1 = json.loads(_tool_record_failure(
+        ctx, thread_id="t1", step="mark_shipped", error_message="boom",
+    ))
+    assert r1["ok"] is True and r1["failure_count"] == 1
+    r2 = json.loads(_tool_record_failure(
+        ctx, thread_id="t1", step="mark_shipped", error_message="boom",
+    ))
+    assert r2["failure_count"] == 2
+    assert ctx.actions["errors"] == 2
+
+
+def test_build_tools_returns_twelve_tools_after_task_7():
+    assert len(build_tools(_ctx_with_ant())) == 12
