@@ -473,3 +473,166 @@ def test_tick_parser_rejects_agent_with_dry_run(capsys):
     import pytest
     with pytest.raises(SystemExit):
         parser.parse_args(["tick", "--agent", "--dry-run"])
+
+
+def _tools_by_name(tools: list) -> dict:
+    return {t.name: t for t in tools}
+
+
+def _make_scripted_runner(script):
+    """script: list of callables taking (tools_by_name) -> None.
+    Each callable simulates a Claude turn that invokes selected tools.
+    Returns a factory suitable for ant.beta.messages.tool_runner.side_effect.
+    """
+    def _factory(**kwargs):
+        tools = _tools_by_name(kwargs["tools"])
+        for step in script:
+            step(tools)
+        return iter([])
+    return _factory
+
+
+def test_e2e_ingest_new_pending_email(tmp_path):
+    """Scenario 1: 1 pending email → parse → create_release_draft."""
+    cfg = _make_cfg(tmp_path)
+    gmail = FakeGmailClient()
+    msg = gmail.inject_pending(
+        from_="customer@example.com", to="sales@example.com",
+        subject="Sample please",
+        body="Please send 3 cases of Item #190 orange bowls to Mike Chen, 1412 W 37th Pl Los Angeles CA 90007",
+    )
+    ant = MagicMock()
+
+    def step1(tools):
+        # Simulate Claude: list, parse, create_draft
+        pending = json.loads(tools["list_pending_emails"]())
+        assert len(pending) == 1
+        entry = pending[0]
+        parse_result = json.loads(tools["parse_email_content"](
+            subject=entry["subject"], body=entry["body_excerpt"],
+        ))
+        assert parse_result["ok"] is True
+        draft_result = json.loads(tools["create_release_draft"](
+            thread_id=entry["thread_id"], message_id=entry["message_id"],
+            subject=entry["subject"], from_=entry["from"],
+            received_at=entry["received_at"],
+            parsed_json_str=json.dumps(parse_result["parsed"]),
+        ))
+        assert draft_result["ok"] is True
+
+    # Patch parse_request_body so no real Claude call is made.
+    parsed = ParsedRequest(
+        recipient="Mike Chen",
+        address="1412 W 37th Pl Los Angeles CA 90007",
+        items=[ParsedItem(name="orange bowl", qty=3, qty_unit="cases",
+                          item_number="190")],
+    )
+    with patch(
+        "backend.sample_request.agent.parse_request_body",
+        return_value=parsed,
+    ):
+        ant.beta.messages.tool_runner.side_effect = _make_scripted_runner(
+            [step1])
+        result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+
+    assert result.outcome == "ok"
+    assert result.ingested == 1
+    assert len(gmail.drafts_created) == 1
+    saved = json.loads(cfg.state_file.read_text())
+    assert len(saved["requests"]) == 1
+    assert saved["requests"][0]["status"] == "draft_created"
+    assert "sample-request/draft-ready" in gmail.labels_on(msg.message_id)
+
+
+def test_e2e_ship_detection_from_warehouse_reply(tmp_path):
+    """Scenario 2: released request + warehouse reply with UPS → mark_shipped."""
+    cfg = _make_cfg(tmp_path)
+    gmail = FakeGmailClient()
+    orig = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    rec = gmail.inject_sent(to="warehouse@example.com",
+                            subject="Release Request: x",
+                            body="please release")
+    warehouse_tid = rec["thread_id"]
+    gmail.inject_thread_reply(
+        warehouse_tid, from_="warehouse@example.com",
+        body="Shipped; tracking 1ZA123456789012345",
+    )
+    # Seed state to released
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id=orig.thread_id, message_id=orig.message_id,
+        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "A", "address": "x", "items": []},
+    )
+    S.mark_draft_created(state, orig.thread_id, draft_id="d1")
+    S.mark_released(state, orig.thread_id, release_message_id="r1",
+                    warehouse_thread_id=warehouse_tid,
+                    released_at="2026-07-14T01:00:00Z")
+    S.save_state(cfg.state_file, state)
+
+    ant = MagicMock()
+
+    def step1(tools):
+        released = json.loads(tools["list_released_requests"]())
+        assert len(released) == 1
+        thread_id = released[0]["thread_id"]
+        wt = released[0]["warehouse_thread_id"]
+        thread = json.loads(tools["read_warehouse_thread"](thread_id=wt))
+        # Extract tracking (Claude would do this via regex/reasoning)
+        import re
+        matches = [re.search(r"1Z[0-9A-Z]{16}", m["body_excerpt"])
+                   for m in thread]
+        tracking = next((m.group(0) for m in matches if m), None)
+        assert tracking == "1ZA123456789012345"
+        result = json.loads(tools["mark_shipped"](
+            thread_id=thread_id, ups_tracking_no=tracking,
+        ))
+        assert result["ok"] is True
+
+    ant.beta.messages.tool_runner.side_effect = _make_scripted_runner([step1])
+    result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+
+    assert result.outcome == "ok"
+    assert result.shipped == 1
+    saved = json.loads(cfg.state_file.read_text())
+    assert saved["requests"][0]["status"] == "shipped"
+    assert saved["requests"][0]["ups_tracking_no"] == "1ZA123456789012345"
+    assert "sample-request/shipped" in gmail.labels_on(orig.message_id)
+
+
+def test_e2e_send_followup_when_stale(tmp_path):
+    """Scenario 3: released > 4h with no reply → send_followup_reply."""
+    cfg = _make_cfg(tmp_path)
+    gmail = FakeGmailClient()
+    orig = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
+    rec = gmail.inject_sent(to="warehouse@example.com",
+                            subject="Release Request: x", body="please")
+    warehouse_tid = rec["thread_id"]
+    state = S._empty_state()
+    S.add_request(
+        state, thread_id=orig.thread_id, message_id=orig.message_id,
+        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        parsed={"recipient": "Alice", "address": "x",
+                "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}]},
+    )
+    S.mark_draft_created(state, orig.thread_id, draft_id="d1")
+    # released 5 hours ago
+    old_ts = "2026-07-14T00:00:00Z"
+    S.mark_released(state, orig.thread_id, release_message_id="r1",
+                    warehouse_thread_id=warehouse_tid, released_at=old_ts)
+    S.save_state(cfg.state_file, state)
+    ant = MagicMock()
+
+    def step1(tools):
+        released = json.loads(tools["list_released_requests"]())
+        result = json.loads(tools["send_followup_reply"](
+            thread_id=released[0]["thread_id"], escalation_level=1,
+        ))
+        assert result["ok"] is True
+
+    ant.beta.messages.tool_runner.side_effect = _make_scripted_runner([step1])
+    result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+
+    assert result.followups == 1
+    saved = json.loads(cfg.state_file.read_text())
+    assert len(saved["requests"][0]["follow_ups"]) == 1
