@@ -403,7 +403,7 @@ def test_build_tools_returns_twelve_tools_after_task_7():
 
 from pathlib import Path
 from backend.sample_request.config import Config
-from backend.sample_request.cli import TickResult
+from backend.sample_request.cli import TickResult, _build_parser
 
 
 def _make_cfg(tmp_path: Path) -> Config:
@@ -453,3 +453,23 @@ def test_run_agent_tick_outcome_failed_on_runner_exception(tmp_path):
     assert result.outcome == "failed"
     assert cfg.state_file.exists()
     assert json.loads(cfg.state_file.read_text())["meta"]["last_tick_outcome"] == "failed"
+
+
+def test_tick_parser_accepts_agent_flag():
+    parser = _build_parser()
+    args = parser.parse_args(["tick", "--agent"])
+    assert args.agent is True
+    assert args.dry_run is False
+
+
+def test_tick_parser_default_agent_false():
+    parser = _build_parser()
+    args = parser.parse_args(["tick"])
+    assert args.agent is False
+
+
+def test_tick_parser_rejects_agent_with_dry_run(capsys):
+    parser = _build_parser()
+    import pytest
+    with pytest.raises(SystemExit):
+        parser.parse_args(["tick", "--agent", "--dry-run"])

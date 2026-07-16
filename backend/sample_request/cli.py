@@ -437,10 +437,15 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     import anthropic
     ant = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
 
-    def parser_fn(body: str, subject: str) -> ParsedRequest:
-        return parse_request_body(body, subject, client=ant, model=cfg.po_model)
+    if args.agent:
+        from backend.sample_request.agent import run_agent_tick
+        result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+    else:
+        def parser_fn(body: str, subject: str) -> ParsedRequest:
+            return parse_request_body(body, subject, client=ant, model=cfg.po_model)
 
-    result = run_tick(cfg, gmail=gmail, parser_fn=parser_fn, dry_run=args.dry_run)
+        result = run_tick(cfg, gmail=gmail, parser_fn=parser_fn, dry_run=args.dry_run)
+
     return 0 if result.outcome != "failed" else 1
 
 
@@ -494,7 +499,12 @@ def _build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("tick", help="Run one tick cycle")
-    sp.add_argument("--dry-run", action="store_true")
+    grp = sp.add_mutually_exclusive_group()
+    grp.add_argument("--dry-run", action="store_true")
+    grp.add_argument(
+        "--agent", action="store_true",
+        help="Run in tool-using agent mode instead of the hardcoded workflow",
+    )
     sp.set_defaults(func=_cmd_tick)
 
     sp = sub.add_parser("status", help="Pretty-print state")
