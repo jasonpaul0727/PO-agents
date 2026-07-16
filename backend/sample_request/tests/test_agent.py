@@ -18,6 +18,7 @@ from backend.sample_request.agent import (
     _tool_record_failure,
     _tool_send_followup_reply,
     build_tools,
+    run_agent_tick,
 )
 from backend.sample_request.parser import ParsedItem, ParsedRequest, ParserRefused
 from backend.sample_request.tests.fake_gmail import FakeGmailClient
@@ -398,3 +399,57 @@ def test_record_failure_appends_and_returns_count():
 
 def test_build_tools_returns_twelve_tools_after_task_7():
     assert len(build_tools(_ctx_with_ant())) == 12
+
+
+from pathlib import Path
+from backend.sample_request.config import Config
+from backend.sample_request.cli import TickResult
+
+
+def _make_cfg(tmp_path: Path) -> Config:
+    return Config(
+        warehouse_email="warehouse@example.com",
+        anthropic_api_key="sk-test",
+        state_file=tmp_path / ".state.json",
+        log_path=tmp_path / "tick.log",
+    )
+
+
+def _mock_ant_with_immediate_stop():
+    """Return an ant_client whose tool_runner yields nothing (stops immediately)."""
+    ant = MagicMock()
+    ant.beta.messages.tool_runner.return_value = iter([])
+    return ant
+
+
+def test_run_agent_tick_saves_state_and_returns_tick_result(tmp_path):
+    cfg = _make_cfg(tmp_path)
+    gmail = FakeGmailClient()
+    ant = _mock_ant_with_immediate_stop()
+    result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+    assert isinstance(result, TickResult)
+    assert result.outcome == "ok"
+    assert cfg.state_file.exists()
+    saved = json.loads(cfg.state_file.read_text())
+    assert saved["meta"]["last_tick_outcome"] == "ok"
+    # tool_runner invoked with expected args
+    call = ant.beta.messages.tool_runner.call_args
+    assert call.kwargs["model"] == cfg.po_model
+    assert call.kwargs["system"] == SYSTEM_PROMPT
+    assert len(call.kwargs["tools"]) == 12
+    assert call.kwargs["messages"][0]["role"] == "user"
+
+
+def test_run_agent_tick_outcome_failed_on_runner_exception(tmp_path):
+    cfg = _make_cfg(tmp_path)
+    gmail = FakeGmailClient()
+    ant = MagicMock()
+
+    def _explode(*args, **kwargs):
+        raise RuntimeError("runner blew up")
+
+    ant.beta.messages.tool_runner.side_effect = _explode
+    result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
+    assert result.outcome == "failed"
+    assert cfg.state_file.exists()
+    assert json.loads(cfg.state_file.read_text())["meta"]["last_tick_outcome"] == "failed"

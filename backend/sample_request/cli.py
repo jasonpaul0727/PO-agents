@@ -73,6 +73,7 @@ class TickResult(BaseModel):
     detected_sent: int = 0
     shipped: int = 0
     followups: int = 0
+    flagged: int = 0                       # new — used by agent mode
     errors: int = 0
     outcome: str = "ok"
 

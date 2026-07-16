@@ -14,9 +14,11 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 
 from backend.sample_request import state as S
+from backend.sample_request.log import make_tick_id, setup_logger
 from backend.sample_request.cli import (
     LABEL_PENDING, LABEL_DRAFT, LABEL_RELEASED, LABEL_SHIPPED, LABEL_ATTENTION,
 )
@@ -495,3 +497,54 @@ def build_tools(ctx: AgentContext) -> list:
         mark_release_sent, mark_shipped,
         send_followup_reply, flag_needs_attention, record_failure,
     ]
+
+
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def run_agent_tick(cfg, *, gmail, ant_client):
+    """Run one agent-mode tick.
+
+    Returns a TickResult (same shape as workflow mode's run_tick).
+    """
+    from backend.sample_request.cli import TickResult      # local: avoid cycle
+
+    tick_id = make_tick_id()
+    log = setup_logger(cfg.log_path, tick_id)
+    log.info("agent tick start", extra={"step": "agent_tick"})
+
+    state = S.load_state(cfg.state_file)
+    ctx = AgentContext(
+        gmail=gmail, cfg=cfg, state=state,
+        ant_client=ant_client, log=log,
+    )
+    tools = build_tools(ctx)
+
+    try:
+        runner = ant_client.beta.messages.tool_runner(
+            model=cfg.po_model,
+            max_tokens=16000,
+            system=SYSTEM_PROMPT,
+            tools=tools,
+            messages=[{"role": "user", "content": "Run one tick cycle now."}],
+        )
+        for _ in runner:
+            pass
+    except Exception:
+        log.exception("agent tick failed", extra={"step": "agent_tick"})
+        S.update_meta(state, last_tick_at=_iso_now(),
+                      last_tick_outcome="failed")
+        S.save_state(cfg.state_file, state)
+        return TickResult(**ctx.actions, outcome="failed")
+
+    outcome = "ok" if ctx.actions["errors"] == 0 else "partial"
+    S.update_meta(state, last_tick_at=_iso_now(),
+                  last_tick_outcome=outcome)
+    S.save_state(cfg.state_file, state)
+    log.info(
+        "agent tick complete",
+        extra={"step": "agent_tick", "actions": ctx.actions,
+               "outcome": outcome},
+    )
+    return TickResult(**ctx.actions, outcome=outcome)
