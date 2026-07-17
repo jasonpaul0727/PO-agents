@@ -107,34 +107,9 @@ See `AGENT.md` for the tool inventory, system prompt, and trade-offs.
 
 ## Manual smoke checklist
 
-After setup, verify the end-to-end pipeline by hand:
-
-- [ ] Send yourself an email — **Subject:** `Sample request — smoke 1`,
-      **Body:** any recipient + address + items in free-form text.
-- [ ] Within a few seconds, confirm the Gmail filter applies the
-      `sample-request/pending-release` label.
-- [ ] Run `.venv/bin/python3 -m backend.sample_request tick --dry-run`. Check
-      the log file and the `.dryrun.*` state sidecar for a sensible
-      `ParsedRequest`.
-- [ ] Run `.venv/bin/python3 -m backend.sample_request tick` (live). Confirm:
-  - A new draft appears in Gmail Drafts addressed to your configured
-    warehouse email.
-  - The original email's label flips from `pending-release` →
-    `draft-ready`.
-  - `.venv/bin/python3 -m backend.sample_request status` lists the request as
-    `draft_created`.
-- [ ] Open the draft in Gmail and click **Send**.
-- [ ] Wait for the next cron tick (or run `tick` manually). Confirm:
-  - `status` reports `released`.
-  - The original email's label flips `draft-ready` → `released`.
-- [ ] Reply to the warehouse thread (from the warehouse account or by
-      sending yourself a UPS-bearing reply) with a body containing
-      `Tracking: 1ZA123456789012345`.
-- [ ] Run `tick`. Confirm `status` becomes `shipped`, label flips
-      `released` → `shipped`, and `ups_tracking_no` is set.
-- [ ] Optionally, leave a `released` request without a UPS reply for
-      more than `SAMPLE_REQUEST_FOLLOWUP_HOURS` and confirm the next
-      `tick` auto-sends a follow-up reply on the warehouse thread.
+See [TESTING.md](TESTING.md) for the full 6-case manual test checklist
+(happy path, idempotency, follow-up escalation, bad tracking, dirty input,
+agent mode), including recommended execution order and cleanup steps.
 
 ## Operational notes
 
