@@ -125,7 +125,11 @@ class GmailClient:
         return [self._get_message(m["id"]) for m in listing.get("messages", [])]
 
     def fetch_sent_to(self, to: str, subject_prefix: str) -> list[GmailMessage]:
-        query = f'from:me to:{to} subject:"{subject_prefix}" newer_than:1d'
+        # in:sent is load-bearing: without it Gmail search also returns
+        # drafts, so detect_sent would match the draft created seconds
+        # earlier in the same tick and mark the request released before
+        # the user ever clicks Send.
+        query = f'in:sent to:{to} subject:"{subject_prefix}" newer_than:1d'
         listing = self._svc.users().messages().list(
             userId="me", q=query, maxResults=50,
         ).execute()
