@@ -79,3 +79,20 @@ def test_followup_message_changes_each_send(config, fake_gmail):
     assert len(agent_replies) >= 2
     # Compare the last two replies (the two follow-ups we just sent)
     assert agent_replies[-1].body != agent_replies[-2].body
+
+
+def test_followup_is_addressed_to_warehouse_not_self(config, fake_gmail):
+    """Regression: reply_in_thread used the thread FIRST message From as
+    recipient — but we started the warehouse thread, so every follow-up
+    was mailed back to ourselves and the warehouse never saw it (live
+    incident 2026-07-18)."""
+    stale = (
+        datetime.now(timezone.utc) - timedelta(hours=5)
+    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    _, thread_id = _seed_released(config, fake_gmail, stale)
+
+    result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
+
+    assert result.followups == 1
+    reply = fake_gmail.fetch_thread(thread_id)[-1]
+    assert reply.to == config.warehouse_email

@@ -85,7 +85,8 @@ class FakeGmailClient:
         })
         return draft_id
 
-    def reply_in_thread(self, thread_id: str, body: str) -> str:
+    def reply_in_thread(self, thread_id: str, body: str,
+                        to: str | None = None) -> str:
         self._maybe_fail("reply_in_thread")
         msg_id = self._mint_id("reply")
         # Pull subject from first message in the thread, prefixed with Re:
@@ -95,7 +96,7 @@ class FakeGmailClient:
             message_id=msg_id,
             thread_id=thread_id,
             from_="me@example.com",
-            to=first.from_,
+            to=to or first.from_,
             subject=subj,
             body=body,
             internal_date=_now_iso(),

@@ -182,7 +182,8 @@ class GmailClient:
         ).execute()
         return draft["id"]
 
-    def reply_in_thread(self, thread_id: str, body: str) -> str:
+    def reply_in_thread(self, thread_id: str, body: str,
+                        to: str | None = None) -> str:
         thread = self._svc.users().threads().get(
             userId="me", id=thread_id, format="metadata",
             metadataHeaders=["Subject", "From", "Message-ID"],
@@ -193,7 +194,10 @@ class GmailClient:
         if not subj.lower().startswith("re:"):
             subj = f"Re: {subj}"
         in_reply_to = headers.get("message-id", "")
-        recipient = headers.get("from", "")
+        # Callers must pass `to` for threads WE started: the first
+        # message's From is ourselves there, and falling back to it
+        # mails the reply back to us instead of the counterparty.
+        recipient = to or headers.get("from", "")
 
         mime = email.message.EmailMessage()
         mime["To"] = recipient

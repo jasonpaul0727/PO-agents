@@ -352,7 +352,8 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             count += 1
             continue
         try:
-            new_msg_id = _retry(lambda: gmail.reply_in_thread(warehouse_thread, body))
+            new_msg_id = _retry(lambda: gmail.reply_in_thread(
+                warehouse_thread, body, to=cfg.warehouse_email))
         except Exception as exc:                     # noqa: BLE001
             errors += 1
             n = S.append_tick_error(

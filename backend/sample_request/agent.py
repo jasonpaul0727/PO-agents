@@ -284,7 +284,8 @@ def _tool_send_followup_reply(
         if not warehouse_thread:
             raise ValueError(f"no warehouse_thread_id for {thread_id}")
         body = build_followup_email(req, escalation_level)
-        reply_id = ctx.gmail.reply_in_thread(warehouse_thread, body)
+        reply_id = ctx.gmail.reply_in_thread(
+            warehouse_thread, body, to=ctx.cfg.warehouse_email)
         S.record_followup(ctx.state, thread_id, message_id=reply_id)
     except Exception as exc:                # noqa: BLE001
         ctx.actions["errors"] += 1
