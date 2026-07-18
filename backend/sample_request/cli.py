@@ -137,6 +137,17 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
                 )
             continue
 
+        if any(r.get("thread_id") == msg.thread_id for r in state["requests"]):
+            # A Fwd:/Re: in an already-tracked thread can carry the pending
+            # label too; one thread is one request, so don't mint another row.
+            log.info(
+                "ingest skip: thread already tracked",
+                extra={"step": "ingest", "thread_id": msg.thread_id},
+            )
+            if not dry_run:
+                gmail.relabel(msg.message_id, remove=[LABEL_PENDING], add=[])
+            continue
+
         try:
             parsed = parser_fn(msg.body, msg.subject)
         except Exception as exc:                     # noqa: BLE001
@@ -218,6 +229,15 @@ def _detect_sent(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
             to=cfg.warehouse_email,
             subject_prefix=f"Release Request: {req['subject']}",
         )
+        # Gmail's subject search is word-based, and one request's subject
+        # can be a literal prefix of another's ("Sample Request 1" vs
+        # "Sample Request 1 – Food Order"), so require the exact draft
+        # subject incl. the recipient suffix (see sender.build_release_email).
+        expected_subject = (
+            f"Release Request: {req['subject']}"
+            f" - {(req.get('parsed') or {}).get('recipient', '')}"
+        )
+        sent = [m for m in sent if m.subject == expected_subject]
         if not sent:
             continue
         sent.sort(key=lambda m: m.internal_date)

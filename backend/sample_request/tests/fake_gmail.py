@@ -131,9 +131,10 @@ class FakeGmailClient:
         subject: str,
         body: str,
         internal_date: str | None = None,
+        thread_id: str | None = None,
     ) -> FakeGmailMessage:
         mid = self._mint_id("msg")
-        tid = self._mint_id("thread")
+        tid = thread_id or self._mint_id("thread")
         msg = FakeGmailMessage(
             message_id=mid, thread_id=tid, from_=from_, to=to,
             subject=subject, body=body,
