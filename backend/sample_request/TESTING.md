@@ -21,16 +21,24 @@
 .venv/bin/python3 -m backend.sample_request tick --agent     # agent 模式（贵，Case 6 才用）
 .venv/bin/python3 -m backend.sample_request status           # 状态表
 tail -10 logs/sample_request_tick.log                        # tick 日志
-# 最新一次 dry-run 的解析结果：
-jq '.requests[] | {subject, parsed}' "$(ls -t .sample_requests_state.json.dryrun.* | head -1)"
+# 已入库请求的解析字段（真跑 tick 之后才有）：
+jq '.requests[] | {subject, status, parsed}' .sample_requests_state.json
 ```
 
-没装 jq 用：`python3 -m json.tool "$(ls -t .sample_requests_state.json.dryrun.* | head -1)" | less`
+没装 jq 用：`python3 -m json.tool .sample_requests_state.json | less`
+
+> ⚠️ dry-run **不会**把新邮件的解析结果写进旁车文件 `.sample_requests_state.json.dryrun.*`
+> （dry-run 分支解析后不入 state，旁车只是既有 state 的快照）。
+> 新邮件的字段级核对要等真跑之后：看 state 文件（上面的 jq）或直接看生成的草稿正文。
 
 ## 测试前准备
 
 - [ ] 暂停 cron：`crontab -e`，在 sample-request 那行行首加 `#`（避免定时 tick 和手动 tick 抢邮件）
 - [ ] 确认 Gmail filter 存在：主题含 "sample request" → 自动打 `sample-request/pending-release`
+- [ ] **确认 filter 排除了系统自己的邮件**：filter 的「不包含（Doesn't have）」必须填 `"Release Request"`。
+      否则系统发给仓库的 release/催单邮件回流进收件箱时（例如仓库邮箱设了自动转发）
+      会被再次打上 pending 标签、被当成新客户请求解析——形成无限套娃回环
+      （主题变成 `Release Request: Release Request: ...`，真实发生过）
 - [ ] 记录基线：跑一次 `status`，记下当前已有的请求数和状态
 
 ---
@@ -43,15 +51,20 @@ jq '.requests[] | {subject, parsed}' "$(ls -t .sample_requests_state.json.dryrun
       主题：`Sample request — test 1`
       正文：`Please send 3 cases of Item #190 orange bowls to Mike Chen, 1412 W 37th Pl, Los Angeles CA 90007`
 - [ ] 2. Gmail 里确认标签 `sample-request/pending-release` 已打上（filter 生效）
-- [ ] 3. 干跑 `tick --dry-run`，用命令速查里的 jq 命令核对解析结果：
-      - `recipient` = `Mike Chen`？
-      - `address` = `1412 W 37th Pl, Los Angeles CA 90007`？
-      - `items` ≈ `[{name: "orange bowls"（近似）, qty: 3, qty_unit: "cases", item_number: "190"}]`？
-      三项全对才继续；有错记入「问题记录」并停在这
+- [ ] 3. 干跑 `tick --dry-run`，验证「捞得到 + 解析不报错」（dry-run 看不到解析字段，字段核对在下一步）：
+      `tail -10 logs/sample_request_tick.log` 应有：
+      - 一行 `"msg": "ingest dry-run: would create draft"`（被捞到且解析成功；其 subject 字段已能看到识别出的收件人）
+      - 结尾 `tick complete` 行 `"errors": 0`
+      不满足则记入「问题记录」并停在这
 - [ ] 4. 真跑 `tick`，确认三件事：
       - Gmail Drafts 出现给仓库邮箱的草稿（主题 `Release Request: ...`）
       - 原邮件标签变为 `sample-request/draft-ready`
       - `status` 显示该请求为 `draft_created`
+- [ ] 4b. **字段级核对**（二选一或都做），全对才继续，有错记入「问题记录」、**不要发送草稿**：
+      - 跑命令速查里的 jq 看 state 里的 `parsed`，或直接打开 Gmail 里的草稿看正文
+      - `recipient` = `Mike Chen`？
+      - `address` = `1412 W 37th Pl, Los Angeles CA 90007`（标点差异不算错）？
+      - `items` ≈ orange bowls × 3 cases，`item_number` = `190`（单复数/单位归一化不算错）？
 - [ ] 5. 打开草稿，人工点 **Send**
 - [ ] 6. 再跑 `tick`，确认：
       - `status` 变 `released`
@@ -89,8 +102,8 @@ released 超过阈值（默认 4h，从「最后一次联系」起算）无仓�
 ## Case 2：脏输入解析
 
 - [ ] 发邮件，主题 `Sample request — test 2`，正文：`send me some samples please`（无收件人/地址/物品）
-- [ ] 干跑 `tick --dry-run`，观察解析结果，记录走了哪个分支：
-      - **分支 A**（解析成功但字段稀疏）：parsed 里 recipient/address 为空串或占位、items 为空 → 真跑后会照常建草稿，人工审草稿时兜底
+- [ ] 干跑 `tick --dry-run`，看日志记录走了哪个分支：
+      - **分支 A**（解析成功但字段稀疏）：日志出现 `would create draft` → 真跑后看 state/草稿里的稀疏字段，人工审草稿时兜底
       - **分支 B**（解析抛错）：日志出现 `parser failed`；邮件**保持** `pending-release`（下轮重试）
 - [ ] 若是分支 B：连续再真跑 2 次 `tick`（共 3 次失败），确认第 3 次后邮件被打上 `sample-request/needs-attention` 标签（失败计数跨 tick 持久化）
 - [ ] 把实际行为记入「问题记录」——本 case 的重点是「不崩 + 行为可解释」，两个分支都算通过

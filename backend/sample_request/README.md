@@ -86,10 +86,14 @@ See `AGENT.md` for the tool inventory, system prompt, and trade-offs.
    .venv/bin/python3 -m backend.sample_request tick --dry-run
    ```
 
-   - Inspect `logs/sample_request_tick.log` for the JSON lines.
-   - Inspect any `.sample_requests_state.json.dryrun.*` files created in
-     the repo root. Confirm parsed `recipient` / `address` / `items` look
-     right for any test emails you have queued.
+   - Inspect `logs/sample_request_tick.log` for the JSON lines — each
+     pending email should log `ingest dry-run: would create draft`, and
+     the final `tick complete` line should report `"errors": 0`.
+   - Note: dry-run does **not** persist new parses to the
+     `.sample_requests_state.json.dryrun.*` sidecar (it is a snapshot of
+     pre-existing state). Field-level verification of `recipient` /
+     `address` / `items` happens after a real tick — via the state file
+     or the generated Gmail draft, before you send it.
 
 6. **Install the crontab line**
 
