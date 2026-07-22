@@ -125,7 +125,11 @@ class GmailClient:
         return [self._get_message(m["id"]) for m in listing.get("messages", [])]
 
     def fetch_sent_to(self, to: str, subject_prefix: str) -> list[GmailMessage]:
-        query = f'from:me to:{to} subject:"{subject_prefix}" newer_than:1d'
+        # in:sent is load-bearing: without it Gmail search also returns
+        # drafts, so detect_sent would match the draft created seconds
+        # earlier in the same tick and mark the request released before
+        # the user ever clicks Send.
+        query = f'in:sent to:{to} subject:"{subject_prefix}" newer_than:1d'
         listing = self._svc.users().messages().list(
             userId="me", q=query, maxResults=50,
         ).execute()
@@ -178,7 +182,8 @@ class GmailClient:
         ).execute()
         return draft["id"]
 
-    def reply_in_thread(self, thread_id: str, body: str) -> str:
+    def reply_in_thread(self, thread_id: str, body: str,
+                        to: str | None = None) -> str:
         thread = self._svc.users().threads().get(
             userId="me", id=thread_id, format="metadata",
             metadataHeaders=["Subject", "From", "Message-ID"],
@@ -189,7 +194,10 @@ class GmailClient:
         if not subj.lower().startswith("re:"):
             subj = f"Re: {subj}"
         in_reply_to = headers.get("message-id", "")
-        recipient = headers.get("from", "")
+        # Callers must pass `to` for threads WE started: the first
+        # message's From is ourselves there, and falling back to it
+        # mails the reply back to us instead of the counterparty.
+        recipient = to or headers.get("from", "")
 
         mime = email.message.EmailMessage()
         mime["To"] = recipient

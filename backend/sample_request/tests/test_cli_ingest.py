@@ -83,3 +83,35 @@ def test_tick_writes_meta_and_returns_outcome_ok(config, fake_gmail):
     assert state["meta"]["last_tick_outcome"] == "ok"
     assert state["meta"]["last_tick_at"] is not None
     assert result.outcome == "ok"
+
+
+def test_ingest_skips_additional_messages_in_already_tracked_thread(
+    config, fake_gmail,
+):
+    """Regression: a Fwd:/Re: inside an already-tracked thread that also
+    picked up the pending label must not become a second request row
+    (live incident 2026-07-18: one thread produced four state rows)."""
+    parsed = ParsedRequest(
+        recipient="Emily", address="1 St",
+        items=[ParsedItem(name="W", qty=1)],
+    )
+    msg = fake_gmail.inject_pending(
+        from_="cust@example.com", to="me@example.com",
+        subject="Sample Request A", body="...",
+    )
+    run_tick(config, gmail=fake_gmail, parser_fn=_make_parser(parsed))
+
+    msg2 = fake_gmail.inject_pending(
+        from_="me@example.com", to="me@example.com",
+        subject="Fwd: Sample Request A", body="quoted",
+        thread_id=msg.thread_id,
+    )
+
+    result = run_tick(config, gmail=fake_gmail, parser_fn=_make_parser(parsed))
+
+    assert result.ingested == 0
+    state = S.load_state(config.state_file)
+    assert len(state["requests"]) == 1
+    assert len(fake_gmail.drafts_created) == 1
+    labels2 = fake_gmail.labels_on(msg2.message_id)
+    assert "sample-request/pending-release" not in labels2
