@@ -16,10 +16,13 @@ from backend.agents import exception as exception_agent
 from backend.agents.extraction import ExtractionError
 from backend.models import CustomerName, ExtractedPO, ItemMapping, OrderDraft, OrderStatus
 from backend.repository import Repository
+from backend.security import enforce_process_rate_limit, require_demo_auth
 
 load_dotenv()
 
-app = FastAPI(title="PO Intake Agent")
+# require_demo_auth is a no-op unless DEMO_USERNAME/DEMO_PASSWORD are set (public
+# deploy) — local dev and tests are unaffected.
+app = FastAPI(title="PO Intake Agent", dependencies=[Depends(require_demo_auth)])
 repo = Repository(db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed"))
 
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
@@ -65,7 +68,7 @@ async def preview(file: UploadFile = File(...)):
     return Response(content=buf.getvalue(), media_type="image/png")
 
 
-@app.post("/api/process")
+@app.post("/api/process", dependencies=[Depends(enforce_process_rate_limit)])
 async def process(file: UploadFile = File(...), client=Depends(get_client)):
     pdf_bytes = await file.read()
     try:
