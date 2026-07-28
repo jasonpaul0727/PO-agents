@@ -135,14 +135,45 @@ curl -s -o /dev/null -w "%{http_code}\n" -u demo:<password> http://3.17.209.141/
 1. 现在是 HTTP，不是 HTTPS——Basic Auth 的账号密码是明文过公网的，等域名 + Let's Encrypt 做完才算安全。
 2. ✅ **已解决**：密码曾经明文写在本文档里的问题——本文档从未被提交过，没有真的泄露到 public repo；但后续操作中意外把真实 `.env`（含 API key）贴进了 AI 对话，已完成 key 撤销重发 + 密码轮换，详见「部署应用」一节的记录。
 
-## 当前状态：约 80%
+### 8. 域名 + HTTPS（本次会话新增）
+
+**买域名**：Namecheap 买了 `yanxiabu001.com`。买的时候注意跳过了它搭售的 "Web Hosting"（共享虚拟主机，跟自建 EC2 服务器完全是两条路，用不上）。
+
+**DNS 配置**（Namecheap → Domain List → Manage → Advanced DNS）：
+- 删掉了买域名自动生成的两条默认记录（会跟真实解析冲突）：`URL Redirect Record`（`@` 指向停放页）、`CNAME Record`（`www` 指向 `parkingpage.namecheap.com`）。
+- 加了两条 **A 记录**，`@` 和 `www` 都指向 `3.17.209.141`：
+  ```
+  A Record    @      3.17.209.141    Automatic
+  A Record    www    3.17.209.141    Automatic
+  ```
+- `nslookup yanxiabu001.com` 验证生效（几分钟内就传播完了）。
+
+**nginx 配置加域名**：`/etc/nginx/sites-available/po-intake` 里 `server_name _;` 改成 `server_name yanxiabu001.com www.yanxiabu001.com;`，`nginx -t` + `reload`。
+
+**申请证书**：
+```bash
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d yanxiabu001.com -d www.yanxiabu001.com
+```
+选了"HTTP 自动跳转 HTTPS"。证书签发成功，certbot 自动改好了 nginx 配置、设置了到期自动续期（有效期到 2026-10-26，到期前会自动续，不用手动管）。
+
+**✅ 验证通过**：
+```bash
+curl https://yanxiabu001.com/                          # -> 401
+curl -u demo:<password> https://yanxiabu001.com/       # -> 200
+curl http://yanxiabu001.com/                            # -> 301/308，自动跳转 https
+```
+
+至此 `https://yanxiabu001.com` 是真正加密、浏览器认可（不再显示"不安全"警告）的公网地址,Basic Auth 密码不再明文过公网。
+
+## 当前状态：约 90%
 
 | 完成 ✅ | 待办 ⬜ |
 |---|---|
-| 代码/CI/安全防护 | 域名 + HTTPS（Let's Encrypt） |
-| EC2 + SSH + Docker | CD 自动部署（目前只有 CI 测试） |
-| 镜像 build 成功 | AWS 账单告警 + Anthropic 消费上限确认 |
-| `.env` 配置完成 | 处理 DEPLOY.md 密码明文存在 public repo 的问题 |
+| 代码/CI/安全防护 | CD 自动部署（目前只有 CI 测试） |
+| EC2 + SSH + Docker | AWS 账单告警 + Anthropic 消费上限确认 |
+| 镜像 build 成功 | |
+| `.env` 配置完成 | |
 | 容器跑通 + volume 持久化 | |
 | 内部访问验证通过（401/200） | |
 | 容器重启策略 `--restart unless-stopped` | |
@@ -150,6 +181,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -u demo:<password> http://3.17.209.141/
 | 安全组开放 80/443（SSH 仍限本机 IP） | |
 | nginx 反向代理 + 公网 401/200 验证通过 | |
 | API key 撤销重发 + demo 密码轮换（旧密码验证已 401） | |
+| 域名（`yanxiabu001.com`）+ HTTPS（Let's Encrypt，自动续期已设置） | |
 
 ## 常用排查命令
 ```bash
