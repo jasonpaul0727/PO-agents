@@ -169,38 +169,39 @@ curl http://yanxiabu001.com/                            # -> 301/308，自动跳
 ### 9. 自动化 CD 部署（本次会话新增）
 
 **自动部署流程**：每次 `git push` 到 `master` 分支后，GitHub Actions 的 `ci.yml` 工作流自动触发：
-1. `test` 任务：运行 `pytest tests backend/sample_request/tests` + `ruff check --fix && ruff format` 进行 lint 和格式检查
-2. `test` 通过后，自动拉起 `deploy` 任务：使用 GitHub 内置的 Docker 注册表（GHCR）， `docker build` 打镜像 → 推送到 `ghcr.io/jasonpaul0727/po-agents`（公开仓库），每次构建打两个标签：
-   - `<commit-sha>`：当前提交的完整哈希值（可用于精确回滚）
-   - `latest`：最新构建
+1. `test` 任务：运行 `pytest tests backend/sample_request/tests`，以及 `ruff check .` + `ruff format --check .` 进行 lint 和格式检查——这两步都是**只读检查，不会修改仓库文件**，任何 lint/格式问题都会让 `test` 任务失败，而不是被自动改掉。
+2. `test` 通过后，自动拉起 `build-and-deploy` 任务：使用 GitHub 内置的 Docker 注册表（GHCR），`docker build` 打镜像 → 推送到 `ghcr.io/jasonpaul0727/po-agents`（公开仓库），每次构建打两个标签：
+   - `<commit-sha>`：当前提交的完整哈希值（仅供**人工回滚**时使用，自动部署不会用到）
+   - `latest`：最新构建，**自动部署实际拉取和运行的就是这个标签**
 
-3. 镜像推送完成后，自动 SSH 连接到服务器（`3.17.209.141`），执行新容器启动脚本：
+3. 镜像推送完成后，自动 SSH 连接到服务器（`3.17.209.141`），执行 `scripts/deploy.sh`（仓库里的这份是源码副本，服务器上另外放着一份原样拷贝，SSH 部署密钥被 `authorized_keys` 的 forced-command 限制成只能执行服务器上那份 —— 详见下方「CI 部署密钥与 GitHub Secrets」）：
    ```bash
-   ssh -i ~/.ssh/po-agents-key.pem ubuntu@3.17.209.141
-   cd ~/PO-agents
-   docker pull ghcr.io/jasonpaul0727/po-agents:latest
-   docker stop po-intake && docker rm po-intake
-   docker run -d --name po-intake \
-     --env-file .env \
-     -v po_data:/app/data \
-     -p 127.0.0.1:8000:8000 \
-     --restart unless-stopped \
-     ghcr.io/jasonpaul0727/po-agents:latest
+   ssh -i <CI 部署专用私钥> ubuntu@3.17.209.141
+   cd ~/PO-agents && bash scripts/deploy.sh
    ```
-   新容器启动后自动接管所有流量，整个过程**无需手动干预**。
+   `scripts/deploy.sh` 内部依次执行：`docker pull` 最新 `latest` 镜像（`set -euo pipefail`，pull 失败会立刻中止，不会动到旧容器）→ 停止/删除旧容器（`|| true`，允许旧容器已经不存在）→ 用新镜像 `docker run` 起新容器 → 对 `http://127.0.0.1:8000/` 做真实 HTTP 健康检查（最多重试 20 次，每次间隔 2 秒，必须拿到 401 才算成功——401 说明 Uvicorn 在正常提供服务且 `backend/security.py` 的登录门禁还在生效；重试耗尽仍拿不到 401 就打印最后一次状态码并 `exit 1`，让整个部署任务失败）→ 健康检查通过后清理 7 天前的旧镜像（`docker image prune -af --filter "until=168h"`），避免磁盘被占满。新容器启动并通过健康检查后自动接管所有流量，整个过程**无需手动干预**。
+
+   **为什么自动部署固定拉 `latest` 而不是按 commit SHA 参数化**：CI 部署密钥被限制成只能执行一条固定命令，没法在触发 SSH 时传参数。因为 CI 每次构建后会立刻把刚提交的代码推送成 `latest`，所以"刚 push 完就部署 `latest`"等价于"部署这次 push 的 commit"。commit SHA 标签依然每次构建都会推送，留在镜像仓库里给**人工回滚**用（见下方回滚命令）——只是自动部署这条路径不再带 SHA 参数了。
 
 **镜像仓库**：
 - 地址：`ghcr.io/jasonpaul0727/po-agents`（GitHub Container Registry，完全公开）
 - 访问：任何人都能 `docker pull`（无需私钥），但只有 CI 工作流有权限 `docker push`（使用 GitHub Actions 内置的 `GITHUB_TOKEN` 身份认证）
 
-**本节新增之前是如何部署的（现为后备方案/回滚程序）**：见 §4「部署应用」中的手工操作步骤。如果自动部署失败（例如 CI 工作流中途断线、网络问题等），或需要紧急回滚到旧版本，可以手工 SSH 上服务器执行上述命令，把 `ghcr.io/jasonpaul0727/po-agents:latest` 替换成特定的 commit SHA 标签（例如 `ghcr.io/jasonpaul0727/po-agents:abc1234567def`）来拉取指定版本。
+**CI 部署密钥与 GitHub Secrets**：自动部署使用一把独立的、专为 CI 生成的 SSH 密钥对（`~/.ssh/po-agents-ci-deploy`，生成于操作者本机），与操作者日常登录用的个人密钥（`po-agents-key.pem`）完全分开：
+- 私钥内容存进 GitHub 仓库 secret `DEPLOY_SSH_KEY`，另外还有 `DEPLOY_HOST`（服务器 IP）、`DEPLOY_USER`（`ubuntu`）两个 secret，三者共同支撑 `ci.yml` 里的 `Deploy to EC2` 步骤。
+- 公钥追加进了服务器的 `~/.ssh/authorized_keys`（append-only，没有动操作者原有的个人密钥那一行）。
+- 服务器端会通过 `authorized_keys` 里这一行的 forced-command（`restrict,command="..."`）把这把密钥限制成只能执行 `scripts/deploy.sh`，即使密钥泄露也无法用它做其他任何操作——这一步是配合安全组把 22 端口开放到 `0.0.0.0/0` 的前提条件，属于服务器端手工操作，不在仓库代码变更范围内。
+- **密钥需要轮换时**：先在服务器 `~/.ssh/authorized_keys` 里删掉/注释旧密钥对应的那一行，然后本机生成新的密钥对（同样用 `ssh-keygen -t ed25519`），把新公钥按上面「公钥追加」的方式加到服务器，再用 `gh secret set DEPLOY_SSH_KEY --repo jasonpaul0727/PO-agents < <新私钥路径>` 更新 GitHub secret。整个流程与最初生成这把密钥时的操作一致（记录在 `.superpowers/sdd/2026-07-28-cd-automated-deploy/task-3-report.md`）。
+
+**本节新增之前是如何部署的（现为后备方案/回滚程序）**：见 §4「部署应用」中的手工操作步骤。如果自动部署失败（例如 CI 工作流中途断线、网络问题等），或需要紧急回滚到旧版本，可以手工 SSH 上服务器执行下方命令，把 `ghcr.io/jasonpaul0727/po-agents:latest` 替换成特定的 commit SHA 标签（例如 `ghcr.io/jasonpaul0727/po-agents:abc1234567def`）来拉取指定版本。
 
 **回滚命令（紧急恢复旧版本）**：如需回滚到某个旧 commit（例如 `<old-sha>`），在服务器上执行：
 ```bash
 ssh -i ~/.ssh/po-agents-key.pem ubuntu@3.17.209.141
 cd ~/PO-agents
 docker pull ghcr.io/jasonpaul0727/po-agents:<old-sha>
-docker stop po-intake && docker rm po-intake
+docker stop po-intake || true
+docker rm po-intake || true
 docker run -d --name po-intake \
   --env-file .env \
   -v po_data:/app/data \
@@ -232,5 +233,5 @@ docker run -d --name po-intake \
 docker ps                    # 查看运行中的容器
 docker logs po-intake        # 查看应用日志
 docker images                # 查看本地镜像
-cat ~/PO-agents/.env         # 查看当前配置（含真实 key，谨慎操作）
+grep -c "^ANTHROPIC_API_KEY=" ~/PO-agents/.env   # 确认该配置项存在（只输出计数，不显示真实值）
 ```
