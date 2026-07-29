@@ -2,7 +2,7 @@
 
 - **Date:** 2026-07-28
 - **Status:** Approved design, pending implementation plan
-- **Scope:** Extend the existing CI workflow with an automated deploy step; no changes to the manual-deploy runbook in `DEPLOY.md` (it stays as the documented fallback / rollback procedure)
+- **Scope:** Extend the existing CI workflow with an automated deploy step and a code-style gate (`ruff`); no changes to the manual-deploy runbook in `DEPLOY.md` (it stays as the documented fallback / rollback procedure)
 
 ## Goal
 
@@ -17,13 +17,23 @@ This spec adds a CD step that, on every push to `master` that passes the existin
 - No deploy on pull requests — only on push to `master`, after tests pass.
 - Does not replace the manual deploy steps documented in `DEPLOY.md` §4 — those remain the documented procedure for first-time setup and manual rollback.
 
+## Code style gate (added scope)
+
+The existing `test` job runs `pytest` only — no linting or formatting is enforced anywhere in the project today. Two additions:
+
+1. **CI gate**: `test` job gets two new steps, before `pytest`: `ruff check .` (lint) and `ruff format --check .` (formatting, fails if any file isn't already formatted — doesn't auto-fix in CI). Chose `ruff` over the older flake8+black+isort combo — one fast tool, one config block, does both jobs.
+2. **One-time repo formatting pass**: since no code has ever been run through `ruff`, turning on `ruff format --check` cold would fail on the first run. As part of implementing this, run `ruff format .` and `ruff check --fix .` once across the existing codebase and commit the result *before* the CI gate is turned on, so the gate starts green.
+
+Because this lives inside the existing `test` job (not a new parallel job), the dependency graph doesn't change: `build-and-deploy` still just does `needs: test`, and a lint/format failure blocks deploy exactly the same way a test failure already does — no separate wiring needed.
+
 ## Architecture
 
 ```
 push to master
       │
       ▼
-GitHub Actions: test job (existing, unchanged)
+GitHub Actions: test job (existing job, gains ruff check + ruff format --check
+                 as new steps before pytest)
       │ needs: passes
       ▼
 GitHub Actions: build-and-deploy job (new)
@@ -78,3 +88,4 @@ No application data flows through the pipeline. The only thing that moves is the
 - The existing test suite (134 tests) is unchanged and remains the gate before any deploy happens — this spec doesn't add new test coverage, it adds an automated action that only runs after existing tests pass.
 - Manual verification after implementation: push a trivial change to `master`, confirm the Actions run builds, pushes both tags to GHCR, SSHes in, and the new container comes up; verify via `curl https://yanxiabu001.com/` (401/200 pair) that the redeployed app is live and the auth guard still works.
 - Rollback path gets exercised manually once during implementation (deploy two commits, roll back to the first by tag, confirm the app reflects the older version) to prove the documented procedure actually works before relying on it.
+- After the one-time formatting pass, run the full test suite locally to confirm `ruff format`/`ruff check --fix` didn't change any runtime behavior (formatting-only tools shouldn't, but verify rather than assume) before turning the CI gate on.
