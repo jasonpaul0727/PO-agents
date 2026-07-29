@@ -166,12 +166,55 @@ curl http://yanxiabu001.com/                            # -> 301/308，自动跳
 
 至此 `https://yanxiabu001.com` 是真正加密、浏览器认可（不再显示"不安全"警告）的公网地址,Basic Auth 密码不再明文过公网。
 
-## 当前状态：约 90%
+### 9. 自动化 CD 部署（本次会话新增）
+
+**自动部署流程**：每次 `git push` 到 `master` 分支后，GitHub Actions 的 `ci.yml` 工作流自动触发：
+1. `test` 任务：运行 `pytest tests backend/sample_request/tests` + `ruff check --fix && ruff format` 进行 lint 和格式检查
+2. `test` 通过后，自动拉起 `deploy` 任务：使用 GitHub 内置的 Docker 注册表（GHCR）， `docker build` 打镜像 → 推送到 `ghcr.io/jasonpaul0727/po-agents`（公开仓库），每次构建打两个标签：
+   - `<commit-sha>`：当前提交的完整哈希值（可用于精确回滚）
+   - `latest`：最新构建
+
+3. 镜像推送完成后，自动 SSH 连接到服务器（`3.17.209.141`），执行新容器启动脚本：
+   ```bash
+   ssh -i ~/.ssh/po-agents-key.pem ubuntu@3.17.209.141
+   cd ~/PO-agents
+   docker pull ghcr.io/jasonpaul0727/po-agents:latest
+   docker stop po-intake && docker rm po-intake
+   docker run -d --name po-intake \
+     --env-file .env \
+     -v po_data:/app/data \
+     -p 127.0.0.1:8000:8000 \
+     --restart unless-stopped \
+     ghcr.io/jasonpaul0727/po-agents:latest
+   ```
+   新容器启动后自动接管所有流量，整个过程**无需手动干预**。
+
+**镜像仓库**：
+- 地址：`ghcr.io/jasonpaul0727/po-agents`（GitHub Container Registry，完全公开）
+- 访问：任何人都能 `docker pull`（无需私钥），但只有 CI 工作流有权限 `docker push`（使用 GitHub Actions 内置的 `GITHUB_TOKEN` 身份认证）
+
+**本节新增之前是如何部署的（现为后备方案/回滚程序）**：见 §4「部署应用」中的手工操作步骤。如果自动部署失败（例如 CI 工作流中途断线、网络问题等），或需要紧急回滚到旧版本，可以手工 SSH 上服务器执行上述命令，把 `ghcr.io/jasonpaul0727/po-agents:latest` 替换成特定的 commit SHA 标签（例如 `ghcr.io/jasonpaul0727/po-agents:abc1234567def`）来拉取指定版本。
+
+**回滚命令（紧急恢复旧版本）**：如需回滚到某个旧 commit（例如 `<old-sha>`），在服务器上执行：
+```bash
+ssh -i ~/.ssh/po-agents-key.pem ubuntu@3.17.209.141
+cd ~/PO-agents
+docker pull ghcr.io/jasonpaul0727/po-agents:<old-sha>
+docker stop po-intake && docker rm po-intake
+docker run -d --name po-intake \
+  --env-file .env \
+  -v po_data:/app/data \
+  -p 127.0.0.1:8000:8000 \
+  --restart unless-stopped \
+  ghcr.io/jasonpaul0727/po-agents:<old-sha>
+```
+
+## 当前状态：约 95%
 
 | 完成 ✅ | 待办 ⬜ |
 |---|---|
-| 代码/CI/安全防护 | CD 自动部署（目前只有 CI 测试） |
-| EC2 + SSH + Docker | AWS 账单告警 + Anthropic 消费上限确认 |
+| 代码/CI/安全防护 | AWS 账单告警 + Anthropic 消费上限确认 |
+| EC2 + SSH + Docker | |
 | 镜像 build 成功 | |
 | `.env` 配置完成 | |
 | 容器跑通 + volume 持久化 | |
@@ -182,6 +225,7 @@ curl http://yanxiabu001.com/                            # -> 301/308，自动跳
 | nginx 反向代理 + 公网 401/200 验证通过 | |
 | API key 撤销重发 + demo 密码轮换（旧密码验证已 401） | |
 | 域名（`yanxiabu001.com`）+ HTTPS（Let's Encrypt，自动续期已设置） | |
+| 自动化 CD 部署（GitHub Actions 构建 → 推送 GHCR → 部署容器） | |
 
 ## 常用排查命令
 ```bash
