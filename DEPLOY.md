@@ -192,6 +192,9 @@ curl http://yanxiabu001.com/                            # -> 301/308，自动跳
 - 公钥追加进了服务器的 `~/.ssh/authorized_keys`（append-only，没有动操作者原有的个人密钥那一行）。
 - 服务器端会通过 `authorized_keys` 里这一行的 forced-command（`restrict,command="..."`）把这把密钥限制成只能执行 `scripts/deploy.sh`，即使密钥泄露也无法用它做其他任何操作——这一步是配合安全组把 22 端口开放到 `0.0.0.0/0` 的前提条件，属于服务器端手工操作，不在仓库代码变更范围内。
 - **密钥需要轮换时**：先在服务器 `~/.ssh/authorized_keys` 里删掉/注释旧密钥对应的那一行，然后本机生成新的密钥对（同样用 `ssh-keygen -t ed25519`），把新公钥按上面「公钥追加」的方式加到服务器，再用 `gh secret set DEPLOY_SSH_KEY --repo jasonpaul0727/PO-agents < <新私钥路径>` 更新 GitHub secret。整个流程与最初生成这把密钥时的操作一致（记录在 `.superpowers/sdd/2026-07-28-cd-automated-deploy/task-3-report.md`）。
+- ⚠️ **已知缺口**：实测确认服务器 `~/.ssh/authorized_keys` 里的 `github-actions-deploy` 这一行**目前没有 forced-command 限制**——和操作者个人密钥一样是普通全权限条目，还不是本节前面描述的"只能执行 `scripts/deploy.sh`"。而安全组的 22 端口已经开放到 `0.0.0.0/0`（见下方「服务器端仓库同步」之前的踩坑记录），也就是说这把 CI 私钥（存在 GitHub secret `DEPLOY_SSH_KEY` 里）目前一旦泄露 = 对服务器的完整 shell 访问，且来源不限 IP。forced-command 限制还是待办事项，见下方状态表。
+
+**服务器端仓库同步（本次会话踩坑，2026-07-29）**：`scripts/deploy.sh` 只在 GitHub 仓库里改是不够的——CI 的 `Deploy to EC2` 步骤只会 `docker pull` 镜像，**从来不会**自动更新服务器上 `~/PO-agents` 那份 git checkout（这是设计上的已知取舍，`scripts/deploy.sh` 文件头注释里也提到"a copy of this file lives on the server"）。实测复现过一次：`f7d5b6d` 这个 commit 新增了 `scripts/deploy.sh` 并把 `Deploy to EC2` 步骤改成执行它，push 上去后自动部署报错 `bash: scripts/deploy.sh: No such file or directory`，因为服务器上的 checkout 还停在 55 个 commit 之前。修复方式是手动 SSH 上去 `cd ~/PO-agents && git pull`。**之后只要改动了 `scripts/deploy.sh`（或它依赖的任何服务器端文件）,必须记得在推送到 master 之后、触发的自动部署真正执行前，先手动 SSH 上服务器 `git pull` 一次**，否则自动部署会用旧版本的部署脚本，或者像这次一样直接报文件不存在。
 
 **本节新增之前是如何部署的（现为后备方案/回滚程序）**：见 §4「部署应用」中的手工操作步骤。如果自动部署失败（例如 CI 工作流中途断线、网络问题等），或需要紧急回滚到旧版本，可以手工 SSH 上服务器执行下方命令，把 `ghcr.io/jasonpaul0727/po-agents:latest` 替换成特定的 commit SHA 标签（例如 `ghcr.io/jasonpaul0727/po-agents:abc1234567def`）来拉取指定版本。
 
@@ -222,11 +225,11 @@ docker run -d --name po-intake \
 | 内部访问验证通过（401/200） | |
 | 容器重启策略 `--restart unless-stopped` | |
 | Elastic IP 分配 + 关联（`3.17.209.141`） | |
-| 安全组开放 80/443（SSH 仍限本机 IP） | |
+| 安全组开放 80/443/22（22 端口已从"仅本机 IP"改为 `0.0.0.0/0`，2026-07-29，为了让 GitHub Actions 的动态 IP 能连上） | CI 部署密钥的 forced-command 限制（见 §9，目前 `github-actions-deploy` 是无限制的普通密钥） |
 | nginx 反向代理 + 公网 401/200 验证通过 | |
 | API key 撤销重发 + demo 密码轮换（旧密码验证已 401） | |
 | 域名（`yanxiabu001.com`）+ HTTPS（Let's Encrypt，自动续期已设置） | |
-| 自动化 CD 部署（GitHub Actions 构建 → 推送 GHCR → 部署容器） | |
+| 自动化 CD 部署（GitHub Actions 构建 → 推送 GHCR → 部署容器，2026-07-29 首次跑通全绿） | |
 
 ## 常用排查命令
 ```bash

@@ -237,6 +237,8 @@ uvicorn backend.app:app --reload
 # open http://localhost:8000
 ```
 
+> For accessing the live deployment, common server operations, and the release/rollback flow, see [`RUNBOOK.md`](./RUNBOOK.md). For deployment architecture and history, see [`DEPLOY.md`](./DEPLOY.md).
+
 ### Test
 ```bash
 pytest -q
