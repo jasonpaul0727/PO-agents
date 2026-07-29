@@ -226,10 +226,10 @@ docker run -d --name po-intake \
 | 容器重启策略 `--restart unless-stopped` | |
 | Elastic IP 分配 + 关联（`3.17.209.141`） | |
 | 安全组开放 80/443/22（22 端口已从"仅本机 IP"改为 `0.0.0.0/0`，2026-07-29，为了让 GitHub Actions 的动态 IP 能连上） | CI 部署密钥的 forced-command 限制（见 §9，目前 `github-actions-deploy` 是无限制的普通密钥） |
-| nginx 反向代理 + 公网 401/200 验证通过 | |
-| API key 撤销重发 + demo 密码轮换（旧密码验证已 401） | |
-| 域名（`yanxiabu001.com`）+ HTTPS（Let's Encrypt，自动续期已设置） | |
-| 自动化 CD 部署（GitHub Actions 构建 → 推送 GHCR → 部署容器，2026-07-29 首次跑通全绿） | |
+| nginx 反向代理 + 公网 401/200 验证通过 | 服务不可用时的监控/告警（目前完全靠人工发现，2026-07-29 那次"疑似空窗"就是没有自动告警才靠人工排查的） |
+| API key 撤销重发 + demo 密码轮换（旧密码验证已 401） | 服务器端 `~/PO-agents` git checkout 的同步没有自动化（见 §9「服务器端仓库同步」），改动 `scripts/deploy.sh` 后必须记得手动 `git pull`，容易忘 |
+| 域名（`yanxiabu001.com`）+ HTTPS（Let's Encrypt，自动续期已设置） | staging/预发环境或 PR 预览部署——目前每次 push 到 master 直接部署生产，没有中间验证环境 |
+| 自动化 CD 部署（GitHub Actions 构建 → 推送 GHCR → 部署容器，2026-07-29 首次跑通全绿，已验证两次） | |
 
 ## 常用排查命令
 ```bash
