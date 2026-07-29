@@ -59,4 +59,4 @@ def test_extract_po_retries_then_raises():
     client = FlakyClient()
     with pytest.raises(ExtractionError):
         extraction.extract_po("text", client)
-    assert client.attempts == 3   # initial + 2 retries
+    assert client.attempts == 3  # initial + 2 retries

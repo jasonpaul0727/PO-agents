@@ -1,14 +1,14 @@
 import io
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from reportlab.pdfgen import canvas
 
 from backend import app as app_module
 from backend.app import app, get_client
+from backend.models import ExtractedPO, LineItem, POHeader
 from backend.repository import Repository
-from backend.models import ExtractedPO, POHeader, LineItem
 from tests.conftest import FakeClient
-from pathlib import Path
 
 SEED = str(Path(__file__).resolve().parents[1] / "backend" / "seed")
 
@@ -33,10 +33,12 @@ def teardown_module(module):
 
 
 def test_process_returns_order_and_steps():
-    setup_overrides(ExtractedPO(
-        header=POHeader(customer="ACME Corp", po_number="PO-3001"),
-        line_items=[LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0)],
-    ))
+    setup_overrides(
+        ExtractedPO(
+            header=POHeader(customer="ACME Corp", po_number="PO-3001"),
+            line_items=[LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0)],
+        )
+    )
     client = TestClient(app)
     resp = client.post("/api/process", files={"file": ("po.pdf", _pdf("PO"), "application/pdf")})
     assert resp.status_code == 200
@@ -50,9 +52,7 @@ def test_submit_overstock_blocks_release():
     client = TestClient(app)
     draft = {
         "header": {"customer": "ACME Corp", "po_number": "PO-3002"},
-        "line_items": [{
-            "item_number": "ITEM-1001", "order_quantity": 50, "manual_commit": 40
-        }],
+        "line_items": [{"item_number": "ITEM-1001", "order_quantity": 50, "manual_commit": 40}],
         "status": "ready_to_submit",
     }
     resp = client.post("/api/submit", json=draft)

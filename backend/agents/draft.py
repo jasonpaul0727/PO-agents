@@ -8,9 +8,7 @@ def build_draft(po: ExtractedPO, issues: list[Issue]) -> OrderDraft:
         )
         li.difference = li.order_quantity - li.committed_quantity
         li.line_total = (
-            round(li.unit_price * li.order_quantity, 2)
-            if li.unit_price is not None
-            else None
+            round(li.unit_price * li.order_quantity, 2) if li.unit_price is not None else None
         )
 
     priced = [li.line_total for li in po.line_items if li.line_total is not None]

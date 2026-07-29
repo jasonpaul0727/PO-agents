@@ -1,5 +1,5 @@
 from backend import pipeline
-from backend.models import ExtractedPO, POHeader, LineItem, OrderStatus
+from backend.models import ExtractedPO, LineItem, OrderStatus, POHeader
 from tests.conftest import FakeClient
 
 DUMMY_PDF_TEXT_BYTES = None  # pipeline reads PDF; we feed a real PDF below
@@ -7,7 +7,9 @@ DUMMY_PDF_TEXT_BYTES = None  # pipeline reads PDF; we feed a real PDF below
 
 def _pdf(text):
     import io
+
     from reportlab.pdfgen import canvas
+
     buf = io.BytesIO()
     c = canvas.Canvas(buf)
     c.drawString(50, 800, text)

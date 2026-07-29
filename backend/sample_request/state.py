@@ -1,9 +1,10 @@
 """State file (`.sample_requests_state.json`) load/save and mutations."""
+
 from __future__ import annotations
 
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCHEMA_VERSION = 2
@@ -12,7 +13,7 @@ _MAX_TICK_ERRORS = 10
 
 
 def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def parse_iso(ts: str) -> datetime:
@@ -181,10 +182,12 @@ def record_followup(
     sent_at: str | None = None,
 ) -> None:
     req = _require(state, thread_id)
-    req.setdefault("follow_ups", []).append({
-        "sent_at": sent_at or now_iso(),
-        "message_id": message_id,
-    })
+    req.setdefault("follow_ups", []).append(
+        {
+            "sent_at": sent_at or now_iso(),
+            "message_id": message_id,
+        }
+    )
 
 
 def append_tick_error(
@@ -198,13 +201,15 @@ def append_tick_error(
 ) -> int:
     req = _require(state, thread_id)
     errs = req.setdefault("tick_errors", [])
-    errs.append({
-        "at": now_iso(),
-        "step": step,
-        "error_class": error_class,
-        "message": message,
-        "raw_excerpt": (raw_excerpt or "")[:500] or None,
-    })
+    errs.append(
+        {
+            "at": now_iso(),
+            "step": step,
+            "error_class": error_class,
+            "message": message,
+            "raw_excerpt": (raw_excerpt or "")[:500] or None,
+        }
+    )
     if len(errs) > _MAX_TICK_ERRORS:
         del errs[: len(errs) - _MAX_TICK_ERRORS]
     return len(errs)

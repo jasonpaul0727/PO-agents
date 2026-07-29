@@ -1,4 +1,5 @@
 """Integration test: check_shipments step (Task 12)."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -8,11 +9,14 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 
 def _seed_released(config, fake_gmail) -> tuple[str, str]:
     msg = fake_gmail.inject_pending(
-        from_="cust@example.com", to="me@example.com",
-        subject="Sample request — Z", body="...",
+        from_="cust@example.com",
+        to="me@example.com",
+        subject="Sample request — Z",
+        body="...",
     )
     parsed = ParsedRequest(
-        recipient="Z", address="A",
+        recipient="Z",
+        address="A",
         items=[ParsedItem(name="X", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)
@@ -30,7 +34,8 @@ def _seed_released(config, fake_gmail) -> tuple[str, str]:
 def test_check_shipments_no_ups_keeps_state(config, fake_gmail):
     orig_id, thread_id = _seed_released(config, fake_gmail)
     fake_gmail.inject_thread_reply(
-        thread_id, from_="warehouse@example.com",
+        thread_id,
+        from_="warehouse@example.com",
         body="Got it, working on this shortly.",
     )
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
@@ -42,7 +47,8 @@ def test_check_shipments_no_ups_keeps_state(config, fake_gmail):
 def test_check_shipments_ups_present_marks_shipped(config, fake_gmail):
     orig_id, thread_id = _seed_released(config, fake_gmail)
     fake_gmail.inject_thread_reply(
-        thread_id, from_="warehouse@example.com",
+        thread_id,
+        from_="warehouse@example.com",
         body="Shipped via UPS. Tracking: 1ZA123456789012345 — ETA 2 days.",
     )
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)

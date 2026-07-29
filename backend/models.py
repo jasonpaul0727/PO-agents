@@ -1,22 +1,22 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel
 
 
 class LineItem(BaseModel):
-    item_number: str                            # our internal item number
-    customer_item_number: str | None = None     # the customer's own item number (cross-ref source)
+    item_number: str  # our internal item number
+    customer_item_number: str | None = None  # the customer's own item number (cross-ref source)
     order_quantity: int
-    unit_price: float | None = None             # extracted
-    line_total: float | None = None             # derived = unit_price * order_quantity
-    warehouse_quantity: int = 0                 # backfilled by Exception
-    inventory_commit: int = 0                   # = min(order_quantity, warehouse_quantity)
-    manual_commit: int | None = None            # operator override, 0..warehouse_quantity
-    committed_quantity: int = 0                 # = manual_commit if set else inventory_commit
-    difference: int = 0                         # = order_quantity - committed_quantity
-    cut_reason_type: str | None = None          # set when difference > 0
-    on_the_way_quantity: int = 0                # 0..difference (info only)
+    unit_price: float | None = None  # extracted
+    line_total: float | None = None  # derived = unit_price * order_quantity
+    warehouse_quantity: int = 0  # backfilled by Exception
+    inventory_commit: int = 0  # = min(order_quantity, warehouse_quantity)
+    manual_commit: int | None = None  # operator override, 0..warehouse_quantity
+    committed_quantity: int = 0  # = manual_commit if set else inventory_commit
+    difference: int = 0  # = order_quantity - committed_quantity
+    cut_reason_type: str | None = None  # set when difference > 0
+    on_the_way_quantity: int = 0  # 0..difference (info only)
     on_the_way_tracking_no: str | None = None
     note: str | None = None
 
@@ -42,7 +42,7 @@ class ExtractedLineItem(BaseModel):
     extraction schema."""
 
     item_number: str
-    customer_item_number: str | None = None     # customer's own item / model number, if shown
+    customer_item_number: str | None = None  # customer's own item / model number, if shown
     order_quantity: int
     unit_price: float | None = None
 
@@ -77,7 +77,7 @@ class Issue(BaseModel):
     field: str | None = None
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     NEEDS_REVIEW = "needs_review"
     REVISE = "revise"
     READY_TO_SUBMIT = "ready_to_submit"

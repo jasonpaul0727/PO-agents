@@ -74,10 +74,13 @@ def extract_po_from_pdf(pdf_bytes: bytes, client) -> ExtractedPO:
             "type": "document",
             "source": {"type": "base64", "media_type": "application/pdf", "data": data},
         },
-        {"type": "text", "text": (
-            "Extract the purchase order header (including the PO number) and line items. "
-            "For each line, if there is a customer/model item number column distinct from "
-            "an internal SKU, put it in customer_item_number."
-        )},
+        {
+            "type": "text",
+            "text": (
+                "Extract the purchase order header (including the PO number) and line items. "
+                "For each line, if there is a customer/model item number column distinct from "
+                "an internal SKU, put it in customer_item_number."
+            ),
+        },
     ]
     return _parse_with_retries(client, content)

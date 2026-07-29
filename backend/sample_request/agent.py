@@ -9,22 +9,26 @@ SYSTEM_PROMPT, build_tools, and run_agent_tick without the `anthropic`
 package being importable — the SDK is only touched inside the closure
 bodies and inside run_agent_tick.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.sample_request import state as S
-from backend.sample_request.log import make_tick_id, setup_logger
 from backend.sample_request.cli import (
-    LABEL_PENDING, LABEL_DRAFT, LABEL_RELEASED, LABEL_SHIPPED, LABEL_ATTENTION,
+    LABEL_ATTENTION,
+    LABEL_DRAFT,
+    LABEL_PENDING,
+    LABEL_RELEASED,
+    LABEL_SHIPPED,
 )
+from backend.sample_request.log import make_tick_id, setup_logger
 from backend.sample_request.parser import ParsedRequest, parse_request_body
-from backend.sample_request.sender import build_release_email, build_followup_email
-
+from backend.sample_request.sender import build_followup_email, build_release_email
 
 SYSTEM_PROMPT = """You are the sample-request operations agent for a sales team.
 
@@ -65,21 +69,22 @@ and end your turn.
 @dataclass
 class AgentContext:
     """Per-tick execution context passed to every tool implementation."""
-    gmail: Any                      # GmailClient or FakeGmailClient
-    cfg: Any                        # Config (avoid import to keep tests light)
+
+    gmail: Any  # GmailClient or FakeGmailClient
+    cfg: Any  # Config (avoid import to keep tests light)
     state: dict
-    ant_client: Any = None          # optional in tests where parser is stubbed
-    log: logging.Logger = field(
-        default_factory=lambda: logging.getLogger("sample_request.agent")
+    ant_client: Any = None  # optional in tests where parser is stubbed
+    log: logging.Logger = field(default_factory=lambda: logging.getLogger("sample_request.agent"))
+    actions: dict[str, int] = field(
+        default_factory=lambda: {
+            "ingested": 0,
+            "detected_sent": 0,
+            "shipped": 0,
+            "followups": 0,
+            "flagged": 0,
+            "errors": 0,
+        }
     )
-    actions: dict[str, int] = field(default_factory=lambda: {
-        "ingested": 0,
-        "detected_sent": 0,
-        "shipped": 0,
-        "followups": 0,
-        "flagged": 0,
-        "errors": 0,
-    })
 
 
 def _tool_list_pending_emails(ctx: AgentContext) -> str:
@@ -104,13 +109,15 @@ def _tool_list_released_requests(ctx: AgentContext) -> str:
         if req.get("status") != "released":
             continue
         parsed = req.get("parsed") or {}
-        out.append({
-            "thread_id": req["thread_id"],
-            "recipient": parsed.get("recipient", ""),
-            "released_at": req.get("released_at"),
-            "warehouse_thread_id": req.get("warehouse_thread_id"),
-            "follow_ups_count": len(req.get("follow_ups") or []),
-        })
+        out.append(
+            {
+                "thread_id": req["thread_id"],
+                "recipient": parsed.get("recipient", ""),
+                "released_at": req.get("released_at"),
+                "warehouse_thread_id": req.get("warehouse_thread_id"),
+                "follow_ups_count": len(req.get("follow_ups") or []),
+            }
+        )
     return json.dumps(out)
 
 
@@ -120,16 +127,17 @@ def _tool_get_state_summary(ctx: AgentContext) -> str:
     for r in reqs:
         s = r.get("status", "unknown")
         by_status[s] = by_status.get(s, 0) + 1
-    return json.dumps({
-        "total": len(reqs),
-        "by_status": by_status,
-        "needs_attention_flagged": sum(
-            1 for r in reqs if any(
-                e.get("step") == "flag_needs_attention"
-                for e in r.get("tick_errors") or []
-            )
-        ),
-    })
+    return json.dumps(
+        {
+            "total": len(reqs),
+            "by_status": by_status,
+            "needs_attention_flagged": sum(
+                1
+                for r in reqs
+                if any(e.get("step") == "flag_needs_attention" for e in r.get("tick_errors") or [])
+            ),
+        }
+    )
 
 
 def _tool_read_warehouse_thread(ctx: AgentContext, thread_id: str) -> str:
@@ -167,16 +175,19 @@ def _tool_check_sent_folder(ctx: AgentContext, subject_prefix: str) -> str:
 def _tool_parse_email_content(ctx: AgentContext, subject: str, body: str) -> str:
     try:
         parsed = parse_request_body(
-            body, subject,
+            body,
+            subject,
             client=ctx.ant_client,
             model=ctx.cfg.po_model,
         )
-    except Exception as exc:            # noqa: BLE001
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     return json.dumps({"ok": True, "parsed": parsed.model_dump()})
 
 
@@ -201,80 +212,103 @@ def _tool_create_release_draft(
             in_reply_to=None,
         )
         ctx.gmail.relabel(
-            message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+            message_id,
+            remove=[LABEL_PENDING],
+            add=[LABEL_DRAFT],
         )
         S.add_request(
             ctx.state,
-            thread_id=thread_id, message_id=message_id,
-            subject=subject, from_=from_, received_at=received_at,
+            thread_id=thread_id,
+            message_id=message_id,
+            subject=subject,
+            from_=from_,
+            received_at=received_at,
             parsed=parsed.model_dump(),
         )
         S.mark_draft_created(ctx.state, thread_id, draft_id=draft_id)
         S.reset_ingest_failure(ctx.state, message_id)
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["ingested"] += 1
     return json.dumps({"ok": True, "draft_id": draft_id})
 
 
 def _tool_mark_release_sent(
-    ctx: AgentContext, *,
-    thread_id: str, release_message_id: str,
-    warehouse_thread_id: str, released_at: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    release_message_id: str,
+    warehouse_thread_id: str,
+    released_at: str,
 ) -> str:
     try:
         req = S.find_request(ctx.state, thread_id)
         if req is None:
             raise KeyError(f"thread_id not found: {thread_id}")
         S.mark_released(
-            ctx.state, thread_id,
+            ctx.state,
+            thread_id,
             release_message_id=release_message_id,
             warehouse_thread_id=warehouse_thread_id,
             released_at=released_at,
         )
         ctx.gmail.relabel(
             req["original_message_id"],
-            remove=[LABEL_DRAFT], add=[LABEL_RELEASED],
+            remove=[LABEL_DRAFT],
+            add=[LABEL_RELEASED],
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["detected_sent"] += 1
     return json.dumps({"ok": True})
 
 
 def _tool_mark_shipped(
-    ctx: AgentContext, *, thread_id: str, ups_tracking_no: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    ups_tracking_no: str,
 ) -> str:
     try:
         S.mark_shipped(ctx.state, thread_id, ups_tracking_no)
         req = S.find_request(ctx.state, thread_id)
         ctx.gmail.relabel(
             req["original_message_id"],
-            remove=[LABEL_RELEASED], add=[LABEL_SHIPPED],
+            remove=[LABEL_RELEASED],
+            add=[LABEL_SHIPPED],
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["shipped"] += 1
     return json.dumps({"ok": True})
 
 
 def _tool_send_followup_reply(
-    ctx: AgentContext, *, thread_id: str, escalation_level: int,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    escalation_level: int,
 ) -> str:
     try:
         req = S.find_request(ctx.state, thread_id)
@@ -284,22 +318,26 @@ def _tool_send_followup_reply(
         if not warehouse_thread:
             raise ValueError(f"no warehouse_thread_id for {thread_id}")
         body = build_followup_email(req, escalation_level)
-        reply_id = ctx.gmail.reply_in_thread(
-            warehouse_thread, body, to=ctx.cfg.warehouse_email)
+        reply_id = ctx.gmail.reply_in_thread(warehouse_thread, body, to=ctx.cfg.warehouse_email)
         S.record_followup(ctx.state, thread_id, message_id=reply_id)
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["followups"] += 1
     return json.dumps({"ok": True, "reply_message_id": reply_id})
 
 
 def _tool_flag_needs_attention(
-    ctx: AgentContext, *, message_id: str, reason: str,
+    ctx: AgentContext,
+    *,
+    message_id: str,
+    reason: str,
 ) -> str:
     try:
         ctx.gmail.relabel(message_id, remove=[], add=[LABEL_ATTENTION])
@@ -307,34 +345,42 @@ def _tool_flag_needs_attention(
             "needs-attention flagged",
             extra={"message_id": message_id, "reason": reason[:200]},
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["flagged"] += 1
     return json.dumps({"ok": True})
 
 
 def _tool_record_failure(
-    ctx: AgentContext, *,
-    thread_id: str, step: str, error_message: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    step: str,
+    error_message: str,
 ) -> str:
     try:
         n = S.append_tick_error(
-            ctx.state, thread_id,
+            ctx.state,
+            thread_id,
             step=step,
             error_class="AgentReported",
             message=error_message,
         )
-    except Exception as exc:                # noqa: BLE001
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["errors"] += 1
     return json.dumps({"ok": True, "failure_count": n})
 
@@ -404,8 +450,12 @@ def build_tools(ctx: AgentContext) -> list:
 
     @beta_tool
     def create_release_draft(
-        thread_id: str, message_id: str, subject: str, from_: str,
-        received_at: str, parsed_json_str: str,
+        thread_id: str,
+        message_id: str,
+        subject: str,
+        from_: str,
+        received_at: str,
+        parsed_json_str: str,
     ) -> str:
         """Create a Gmail draft to the warehouse, register the request in state,
         and transition the pending email's label to draft-ready.
@@ -417,15 +467,20 @@ def build_tools(ctx: AgentContext) -> list:
         """
         return _tool_create_release_draft(
             ctx,
-            thread_id=thread_id, message_id=message_id,
-            subject=subject, from_=from_, received_at=received_at,
+            thread_id=thread_id,
+            message_id=message_id,
+            subject=subject,
+            from_=from_,
+            received_at=received_at,
             parsed_json_str=parsed_json_str,
         )
 
     @beta_tool
     def mark_release_sent(
-        thread_id: str, release_message_id: str,
-        warehouse_thread_id: str, released_at: str,
+        thread_id: str,
+        release_message_id: str,
+        warehouse_thread_id: str,
+        released_at: str,
     ) -> str:
         """Record that the user has sent the release draft.
 
@@ -435,7 +490,8 @@ def build_tools(ctx: AgentContext) -> list:
         released_at: ISO UTC timestamp string.
         """
         return _tool_mark_release_sent(
-            ctx, thread_id=thread_id,
+            ctx,
+            thread_id=thread_id,
             release_message_id=release_message_id,
             warehouse_thread_id=warehouse_thread_id,
             released_at=released_at,
@@ -451,7 +507,9 @@ def build_tools(ctx: AgentContext) -> list:
         don't match the UPS regex.
         """
         return _tool_mark_shipped(
-            ctx, thread_id=thread_id, ups_tracking_no=ups_tracking_no,
+            ctx,
+            thread_id=thread_id,
+            ups_tracking_no=ups_tracking_no,
         )
 
     @beta_tool
@@ -463,7 +521,9 @@ def build_tools(ctx: AgentContext) -> list:
         Returns JSON {"ok": true, "reply_message_id": str} or error.
         """
         return _tool_send_followup_reply(
-            ctx, thread_id=thread_id, escalation_level=escalation_level,
+            ctx,
+            thread_id=thread_id,
+            escalation_level=escalation_level,
         )
 
     @beta_tool
@@ -474,12 +534,16 @@ def build_tools(ctx: AgentContext) -> list:
         Also useful for messages that are ambiguous or need human review.
         """
         return _tool_flag_needs_attention(
-            ctx, message_id=message_id, reason=reason,
+            ctx,
+            message_id=message_id,
+            reason=reason,
         )
 
     @beta_tool
     def record_failure(
-        thread_id: str, step: str, error_message: str,
+        thread_id: str,
+        step: str,
+        error_message: str,
     ) -> str:
         """Record a failure for a specific request; returns the cumulative count.
 
@@ -488,20 +552,30 @@ def build_tools(ctx: AgentContext) -> list:
         with flag_needs_attention.
         """
         return _tool_record_failure(
-            ctx, thread_id=thread_id, step=step, error_message=error_message,
+            ctx,
+            thread_id=thread_id,
+            step=step,
+            error_message=error_message,
         )
 
     return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-        parse_email_content, create_release_draft,
-        mark_release_sent, mark_shipped,
-        send_followup_reply, flag_needs_attention, record_failure,
+        list_pending_emails,
+        list_released_requests,
+        get_state_summary,
+        read_warehouse_thread,
+        check_sent_folder,
+        parse_email_content,
+        create_release_draft,
+        mark_release_sent,
+        mark_shipped,
+        send_followup_reply,
+        flag_needs_attention,
+        record_failure,
     ]
 
 
 def _iso_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def run_agent_tick(cfg, *, gmail, ant_client):
@@ -509,7 +583,7 @@ def run_agent_tick(cfg, *, gmail, ant_client):
 
     Returns a TickResult (same shape as workflow mode's run_tick).
     """
-    from backend.sample_request.cli import TickResult      # local: avoid cycle
+    from backend.sample_request.cli import TickResult  # local: avoid cycle
 
     tick_id = make_tick_id()
     log = setup_logger(cfg.log_path, tick_id)
@@ -517,8 +591,11 @@ def run_agent_tick(cfg, *, gmail, ant_client):
 
     state = S.load_state(cfg.state_file)
     ctx = AgentContext(
-        gmail=gmail, cfg=cfg, state=state,
-        ant_client=ant_client, log=log,
+        gmail=gmail,
+        cfg=cfg,
+        state=state,
+        ant_client=ant_client,
+        log=log,
     )
     tools = build_tools(ctx)
 
@@ -534,18 +611,15 @@ def run_agent_tick(cfg, *, gmail, ant_client):
             pass
     except Exception:
         log.exception("agent tick failed", extra={"step": "agent_tick"})
-        S.update_meta(state, last_tick_at=_iso_now(),
-                      last_tick_outcome="failed")
+        S.update_meta(state, last_tick_at=_iso_now(), last_tick_outcome="failed")
         S.save_state(cfg.state_file, state)
         return TickResult(**ctx.actions, outcome="failed")
 
     outcome = "ok" if ctx.actions["errors"] == 0 else "partial"
-    S.update_meta(state, last_tick_at=_iso_now(),
-                  last_tick_outcome=outcome)
+    S.update_meta(state, last_tick_at=_iso_now(), last_tick_outcome=outcome)
     S.save_state(cfg.state_file, state)
     log.info(
         "agent tick complete",
-        extra={"step": "agent_tick", "actions": ctx.actions,
-               "outcome": outcome},
+        extra={"step": "agent_tick", "actions": ctx.actions, "outcome": outcome},
     )
     return TickResult(**ctx.actions, outcome=outcome)

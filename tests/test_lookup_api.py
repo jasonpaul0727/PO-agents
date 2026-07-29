@@ -26,6 +26,7 @@ def client_with_seed() -> TestClient:
 
 # --------------------------- /api/check-item ---------------------------
 
+
 def test_check_item_found():
     resp = client_with_seed().get(
         "/api/check-item", params={"item_number": "ITEM-004", "order_quantity": 70}
@@ -59,6 +60,7 @@ def test_check_item_commit_capped_at_stock():
 
 
 # --------------------------- /api/resolve-item ---------------------------
+
 
 def test_resolve_item_found():
     resp = client_with_seed().get(
@@ -143,6 +145,7 @@ def test_resolve_item_commit_capped_at_stock():
 
 # --------------------------- /api/map-item (learn-as-you-go) ---------------------------
 
+
 def test_map_item_learns_new_mapping():
     client = client_with_seed()
     # A customer with no cross-ref: their number does not resolve yet.
@@ -172,23 +175,29 @@ def test_map_item_learns_new_mapping():
 
 def test_resolve_item_alias_customer_name():
     # The PO's legal name resolves to the Ollies rule via alias matching.
-    body = client_with_seed().get(
-        "/api/resolve-item",
-        params={
-            "customer": "OLLIE'S BARGAIN OUTLET, INC.",
-            "customer_item_number": "75022",
-            "order_quantity": 30,
-        },
-    ).json()
+    body = (
+        client_with_seed()
+        .get(
+            "/api/resolve-item",
+            params={
+                "customer": "OLLIE'S BARGAIN OUTLET, INC.",
+                "customer_item_number": "75022",
+                "order_quantity": 30,
+            },
+        )
+        .json()
+    )
     assert body["resolved"] is True
     assert body["item_number"] == "ITEM-022"
     assert body["found"] is True
 
 
 def test_resolve_item_rule_double_zero_is_100():
-    body = client_with_seed().get(
-        "/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75100"}
-    ).json()
+    body = (
+        client_with_seed()
+        .get("/api/resolve-item", params={"customer": "Ollies", "customer_item_number": "75100"})
+        .json()
+    )
     assert body["item_number"] == "ITEM-100"  # '00' -> 100, not 000
 
 

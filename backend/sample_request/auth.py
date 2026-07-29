@@ -6,6 +6,7 @@ operational Gmail labels.
 
     .venv/bin/python3 -m backend.sample_request.auth
 """
+
 from __future__ import annotations
 
 import sys
@@ -46,9 +47,11 @@ def main() -> int:
     for name in LABEL_NAMES:
         print(f"  {name}: {ids[name]}")
 
-    print("\nNext: create a Gmail filter in the web UI matching "
-          "`subject:\"sample request\"` and apply the "
-          "`sample-request/pending-release` label.")
+    print(
+        "\nNext: create a Gmail filter in the web UI matching "
+        '`subject:"sample request"` and apply the '
+        "`sample-request/pending-release` label."
+    )
     return 0
 
 

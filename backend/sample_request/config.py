@@ -1,9 +1,10 @@
 """Configuration loader for the sample-request module."""
+
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict
@@ -32,27 +33,15 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
     missing = [k for k in _REQUIRED if not env.get(k)]
     if missing:
-        raise ValueError(
-            "missing required env vars: " + ", ".join(missing)
-        )
+        raise ValueError("missing required env vars: " + ", ".join(missing))
 
     return Config(
         warehouse_email=env["SAMPLE_REQUEST_WAREHOUSE_EMAIL"],
-        followup_threshold_hours=float(
-            env.get("SAMPLE_REQUEST_FOLLOWUP_HOURS", "4.0")
-        ),
-        state_file=Path(env.get(
-            "SAMPLE_REQUEST_STATE_FILE", ".sample_requests_state.json"
-        )),
-        token_path=Path(env.get(
-            "SAMPLE_REQUEST_TOKEN_PATH", "secrets/token.json"
-        )),
-        credentials_path=Path(env.get(
-            "SAMPLE_REQUEST_CREDS_PATH", "secrets/credentials.json"
-        )),
-        log_path=Path(env.get(
-            "SAMPLE_REQUEST_LOG_PATH", "logs/sample_request_tick.log"
-        )),
+        followup_threshold_hours=float(env.get("SAMPLE_REQUEST_FOLLOWUP_HOURS", "4.0")),
+        state_file=Path(env.get("SAMPLE_REQUEST_STATE_FILE", ".sample_requests_state.json")),
+        token_path=Path(env.get("SAMPLE_REQUEST_TOKEN_PATH", "secrets/token.json")),
+        credentials_path=Path(env.get("SAMPLE_REQUEST_CREDS_PATH", "secrets/credentials.json")),
+        log_path=Path(env.get("SAMPLE_REQUEST_LOG_PATH", "logs/sample_request_tick.log")),
         anthropic_api_key=env["ANTHROPIC_API_KEY"],
         po_model=env.get("PO_MODEL", "claude-opus-4-8"),
     )

@@ -1,4 +1,5 @@
 """Tests for sample-request config loader."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from backend.sample_request.config import Config, load_config
-
 
 REQUIRED_ENV = {
     "SAMPLE_REQUEST_WAREHOUSE_EMAIL": "warehouse@example.com",

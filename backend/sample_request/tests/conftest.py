@@ -1,7 +1,7 @@
 """Shared pytest fixtures for sample_request tests."""
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import pytest

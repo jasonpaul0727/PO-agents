@@ -3,12 +3,13 @@
 This is what the integration tests run against. The real GmailClient
 (Task 8) provides the same surface against the Gmail API.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -19,11 +20,11 @@ class FakeGmailMessage:
     to: str
     subject: str
     body: str
-    internal_date: str   # ISO UTC
+    internal_date: str  # ISO UTC
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class FakeGmailClient:
@@ -61,9 +62,7 @@ class FakeGmailClient:
     def fetch_thread(self, thread_id: str) -> list[FakeGmailMessage]:
         self._maybe_fail("fetch_thread")
         return [
-            self._messages[mid]
-            for mid in self._threads.get(thread_id, [])
-            if mid in self._messages
+            self._messages[mid] for mid in self._threads.get(thread_id, []) if mid in self._messages
         ]
 
     def create_draft(
@@ -76,17 +75,18 @@ class FakeGmailClient:
         self._maybe_fail("create_draft")
         draft_id = f"draft-{self._next_draft_id}"
         self._next_draft_id += 1
-        self.drafts_created.append({
-            "draft_id": draft_id,
-            "to": to,
-            "subject": subject,
-            "body": body,
-            "in_reply_to": in_reply_to,
-        })
+        self.drafts_created.append(
+            {
+                "draft_id": draft_id,
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "in_reply_to": in_reply_to,
+            }
+        )
         return draft_id
 
-    def reply_in_thread(self, thread_id: str, body: str,
-                        to: str | None = None) -> str:
+    def reply_in_thread(self, thread_id: str, body: str, to: str | None = None) -> str:
         self._maybe_fail("reply_in_thread")
         msg_id = self._mint_id("reply")
         # Pull subject from first message in the thread, prefixed with Re:
@@ -120,7 +120,7 @@ class FakeGmailClient:
     def ensure_labels(self, names: list[str]) -> dict[str, str]:
         self._maybe_fail("ensure_labels")
         for n in names:
-            self._labels_known.setdefault(n, f"label-{len(self._labels_known)+1}")
+            self._labels_known.setdefault(n, f"label-{len(self._labels_known) + 1}")
         return {n: self._labels_known[n] for n in names}
 
     # ---- test helpers -----------------------------------------------------
@@ -137,8 +137,12 @@ class FakeGmailClient:
         mid = self._mint_id("msg")
         tid = thread_id or self._mint_id("thread")
         msg = FakeGmailMessage(
-            message_id=mid, thread_id=tid, from_=from_, to=to,
-            subject=subject, body=body,
+            message_id=mid,
+            thread_id=tid,
+            from_=from_,
+            to=to,
+            subject=subject,
+            body=body,
             internal_date=internal_date or _now_iso(),
         )
         self._messages[mid] = msg
@@ -180,8 +184,11 @@ class FakeGmailClient:
     ) -> FakeGmailMessage:
         mid = self._mint_id("reply")
         msg = FakeGmailMessage(
-            message_id=mid, thread_id=thread_id, from_=from_,
-            to="me@example.com", subject="Re: …",
+            message_id=mid,
+            thread_id=thread_id,
+            from_=from_,
+            to="me@example.com",
+            subject="Re: …",
             body=body,
             internal_date=internal_date or _now_iso(),
         )
@@ -202,9 +209,7 @@ class FakeGmailClient:
         if exc is None:
             exc = RuntimeError(f"forced failure in {method_name}")
         for _ in range(times):
-            self._fail_plan[method_name].append(
-                exc() if callable(exc) else exc
-            )
+            self._fail_plan[method_name].append(exc() if callable(exc) else exc)
 
     # ---- internals --------------------------------------------------------
 

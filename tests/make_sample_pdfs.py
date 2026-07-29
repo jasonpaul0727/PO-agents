@@ -1,4 +1,8 @@
-"""Render the recorded sample texts to demo PDFs in samples/. Run: python tests/make_sample_pdfs.py"""
+"""Render the recorded sample texts to demo PDFs in samples/.
+
+Run: python tests/make_sample_pdfs.py
+"""
+
 from pathlib import Path
 
 from reportlab.pdfgen import canvas

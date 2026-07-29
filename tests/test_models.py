@@ -1,4 +1,4 @@
-from backend.models import LineItem, POHeader, ExtractedPO, Issue, OrderStatus, OrderDraft
+from backend.models import ExtractedPO, LineItem, OrderDraft, OrderStatus, POHeader
 
 
 def test_lineitem_minimal_construction_uses_defaults():

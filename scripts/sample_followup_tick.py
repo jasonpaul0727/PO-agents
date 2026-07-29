@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compatibility shim — real implementation lives in backend.sample_request.cli."""
+
 from __future__ import annotations
 
 import sys

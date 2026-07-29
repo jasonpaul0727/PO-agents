@@ -1,4 +1,5 @@
 """Integration test: detect_sent step (Task 11)."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -14,7 +15,8 @@ def _ingest_one(config, fake_gmail) -> str:
         body="...",
     )
     parsed = ParsedRequest(
-        recipient="Mike", address="1 St",
+        recipient="Mike",
+        address="1 St",
         items=[ParsedItem(name="W", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)
@@ -55,20 +57,21 @@ def test_detect_sent_user_sent_transitions_to_released(config, fake_gmail):
     assert "sample-request/draft-ready" not in fake_gmail.labels_on(orig_id)
 
 
-def test_detect_sent_ignores_sent_mail_whose_subject_merely_extends_ours(
-    config, fake_gmail
-):
+def test_detect_sent_ignores_sent_mail_whose_subject_merely_extends_ours(config, fake_gmail):
     """Regression: request 'Sample Request 1' must not match the sent
     release of a different request 'Sample Request 1 – Food Order' just
     because our expected subject is a prefix of it (live incident
     2026-07-18: cross-matched release led to a false released → false
     shipped cascade)."""
     fake_gmail.inject_pending(
-        from_="cust@example.com", to="me@example.com",
-        subject="Sample Request 1", body="...",
+        from_="cust@example.com",
+        to="me@example.com",
+        subject="Sample Request 1",
+        body="...",
     )
     parsed = ParsedRequest(
-        recipient="Emily", address="1 St",
+        recipient="Emily",
+        address="1 St",
         items=[ParsedItem(name="W", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)

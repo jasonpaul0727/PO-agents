@@ -1,4 +1,5 @@
 """Email-body structured parser backed by the Anthropic SDK."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -53,11 +54,12 @@ def parse_request_body(
     body: str,
     subject: str,
     *,
-    client: "anthropic.Anthropic | None" = None,
+    client: anthropic.Anthropic | None = None,
     model: str = "claude-opus-4-8",
 ) -> ParsedRequest:
-    if client is None:                          # pragma: no cover - real-call path
+    if client is None:  # pragma: no cover - real-call path
         import anthropic
+
         client = anthropic.Anthropic()
 
     response = client.messages.parse(
@@ -65,10 +67,12 @@ def parse_request_body(
         max_tokens=2048,
         system=_SYSTEM_PROMPT,
         output_format=ParsedRequest,
-        messages=[{
-            "role": "user",
-            "content": f"Subject: {subject}\n\n{body}",
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": f"Subject: {subject}\n\n{body}",
+            }
+        ],
     )
 
     if getattr(response, "stop_reason", "") == "refusal":

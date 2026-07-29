@@ -535,6 +535,7 @@ class FakeGmailClient:
         self.labels_on: dict[str, set[str]] = {}
         self.drafts_created: list[dict] = []
         self.sent: list[dict] = []
+
     # implements fetch_pending / create_draft / relabel / reply_in_thread / ...
 ```
 

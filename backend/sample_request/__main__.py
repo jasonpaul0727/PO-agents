@@ -1,4 +1,5 @@
 """Entry point for `python -m backend.sample_request`."""
+
 from __future__ import annotations
 
 import sys

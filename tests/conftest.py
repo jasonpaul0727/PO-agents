@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from backend.models import ExtractedPO, POHeader, LineItem
+from backend.models import ExtractedPO, LineItem, POHeader
 from backend.repository import Repository
 
 SEED = Path(__file__).resolve().parents[1] / "backend" / "seed"

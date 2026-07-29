@@ -41,6 +41,7 @@ Create `backend/sample_request/tests/test_agent.py`:
 
 ```python
 """Tests for the tool-using agent layer."""
+
 from __future__ import annotations
 
 from backend.sample_request.agent import (
@@ -58,8 +59,12 @@ def test_system_prompt_mentions_sample_request_role():
 def test_agent_context_has_action_counters():
     ctx = AgentContext(gmail=None, cfg=None, state={})
     assert set(ctx.actions.keys()) == {
-        "ingested", "detected_sent", "shipped",
-        "followups", "flagged", "errors",
+        "ingested",
+        "detected_sent",
+        "shipped",
+        "followups",
+        "flagged",
+        "errors",
     }
     assert all(v == 0 for v in ctx.actions.values())
 
@@ -93,6 +98,7 @@ SYSTEM_PROMPT, build_tools, and run_agent_tick without the `anthropic`
 package being importable — the SDK is only touched inside the closure
 bodies and inside run_agent_tick.
 """
+
 from __future__ import annotations
 
 import logging
@@ -139,20 +145,21 @@ and end your turn.
 @dataclass
 class AgentContext:
     """Per-tick execution context passed to every tool implementation."""
-    gmail: Any                      # GmailClient or FakeGmailClient
-    cfg: Any                        # Config (avoid import to keep tests light)
+
+    gmail: Any  # GmailClient or FakeGmailClient
+    cfg: Any  # Config (avoid import to keep tests light)
     state: dict
-    log: logging.Logger = field(
-        default_factory=lambda: logging.getLogger("sample_request.agent")
+    log: logging.Logger = field(default_factory=lambda: logging.getLogger("sample_request.agent"))
+    actions: dict[str, int] = field(
+        default_factory=lambda: {
+            "ingested": 0,
+            "detected_sent": 0,
+            "shipped": 0,
+            "followups": 0,
+            "flagged": 0,
+            "errors": 0,
+        }
     )
-    actions: dict[str, int] = field(default_factory=lambda: {
-        "ingested": 0,
-        "detected_sent": 0,
-        "shipped": 0,
-        "followups": 0,
-        "flagged": 0,
-        "errors": 0,
-    })
 
 
 def build_tools(ctx: AgentContext) -> list:
@@ -253,18 +260,30 @@ def test_list_pending_emails_empty_when_no_pending():
 def test_list_released_requests_includes_released_only():
     state = S._empty_state()
     S.add_request(
-        state, thread_id="t1", message_id="m1", subject="s",
-        from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id="t1",
+        message_id="m1",
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "Alice", "address": "x", "items": []},
     )
     S.mark_draft_created(state, "t1", draft_id="d1")
-    S.mark_released(state, "t1", release_message_id="r1",
-                    warehouse_thread_id="wt1",
-                    released_at="2026-07-14T01:00:00Z")
+    S.mark_released(
+        state,
+        "t1",
+        release_message_id="r1",
+        warehouse_thread_id="wt1",
+        released_at="2026-07-14T01:00:00Z",
+    )
 
     S.add_request(
-        state, thread_id="t2", message_id="m2", subject="s2",
-        from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id="t2",
+        message_id="m2",
+        subject="s2",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "Bob", "address": "y", "items": []},
     )  # left in draft_created
 
@@ -279,11 +298,19 @@ def test_list_released_requests_includes_released_only():
 
 def test_get_state_summary_counts_by_status():
     state = S._empty_state()
-    for tid, status in [("a", "draft_created"), ("b", "released"),
-                        ("c", "released"), ("d", "shipped")]:
+    for tid, status in [
+        ("a", "draft_created"),
+        ("b", "released"),
+        ("c", "released"),
+        ("d", "shipped"),
+    ]:
         S.add_request(
-            state, thread_id=tid, message_id=f"m-{tid}", subject="s",
-            from_="c@e", received_at="2026-07-14T00:00:00Z",
+            state,
+            thread_id=tid,
+            message_id=f"m-{tid}",
+            subject="s",
+            from_="c@e",
+            received_at="2026-07-14T00:00:00Z",
             parsed={"recipient": "X", "address": "y", "items": []},
         )
         state["requests"][-1]["status"] = status
@@ -291,7 +318,9 @@ def test_get_state_summary_counts_by_status():
     summary = json.loads(_tool_get_state_summary(ctx))
     assert summary["total"] == 4
     assert summary["by_status"] == {
-        "draft_created": 1, "released": 2, "shipped": 1,
+        "draft_created": 1,
+        "released": 2,
+        "shipped": 1,
     }
 
 
@@ -336,13 +365,15 @@ def _tool_list_released_requests(ctx: AgentContext) -> str:
         if req.get("status") != "released":
             continue
         parsed = req.get("parsed") or {}
-        out.append({
-            "thread_id": req["thread_id"],
-            "recipient": parsed.get("recipient", ""),
-            "released_at": req.get("released_at"),
-            "warehouse_thread_id": req.get("warehouse_thread_id"),
-            "follow_ups_count": len(req.get("follow_ups") or []),
-        })
+        out.append(
+            {
+                "thread_id": req["thread_id"],
+                "recipient": parsed.get("recipient", ""),
+                "released_at": req.get("released_at"),
+                "warehouse_thread_id": req.get("warehouse_thread_id"),
+                "follow_ups_count": len(req.get("follow_ups") or []),
+            }
+        )
     return json.dumps(out)
 
 
@@ -352,16 +383,17 @@ def _tool_get_state_summary(ctx: AgentContext) -> str:
     for r in reqs:
         s = r.get("status", "unknown")
         by_status[s] = by_status.get(s, 0) + 1
-    return json.dumps({
-        "total": len(reqs),
-        "by_status": by_status,
-        "needs_attention_flagged": sum(
-            1 for r in reqs if any(
-                e.get("step") == "flag_needs_attention"
-                for e in r.get("tick_errors") or []
-            )
-        ),
-    })
+    return json.dumps(
+        {
+            "total": len(reqs),
+            "by_status": by_status,
+            "needs_attention_flagged": sum(
+                1
+                for r in reqs
+                if any(e.get("step") == "flag_needs_attention" for e in r.get("tick_errors") or [])
+            ),
+        }
+    )
 ```
 
 Then rewrite `build_tools`:
@@ -462,8 +494,9 @@ def test_read_warehouse_thread_returns_all_messages_in_thread():
         body="please release",
     )
     thread_id = rec["thread_id"]
-    gmail.inject_thread_reply(thread_id, from_="warehouse@example.com",
-                              body="Shipped, tracking 1ZA123456789012345")
+    gmail.inject_thread_reply(
+        thread_id, from_="warehouse@example.com", body="Shipped, tracking 1ZA123456789012345"
+    )
     ctx = AgentContext(gmail=gmail, cfg=_Cfg(), state=S._empty_state())
     payload = json.loads(_tool_read_warehouse_thread(ctx, thread_id))
     assert len(payload) == 2
@@ -472,29 +505,24 @@ def test_read_warehouse_thread_returns_all_messages_in_thread():
 
 
 def test_read_warehouse_thread_empty_for_unknown_thread():
-    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(),
-                       state=S._empty_state())
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(), state=S._empty_state())
     assert json.loads(_tool_read_warehouse_thread(ctx, "nope")) == []
 
 
 def test_check_sent_folder_returns_matching_sent_msgs():
     gmail = FakeGmailClient()
-    gmail.inject_sent(to="warehouse@example.com",
-                      subject="Release Request: Please send samples",
-                      body="x")
-    gmail.inject_sent(to="warehouse@example.com",
-                      subject="Unrelated email",
-                      body="y")
+    gmail.inject_sent(
+        to="warehouse@example.com", subject="Release Request: Please send samples", body="x"
+    )
+    gmail.inject_sent(to="warehouse@example.com", subject="Unrelated email", body="y")
     ctx = AgentContext(gmail=gmail, cfg=_Cfg(), state=S._empty_state())
-    matches = json.loads(_tool_check_sent_folder(
-        ctx, "Release Request: Please send samples"))
+    matches = json.loads(_tool_check_sent_folder(ctx, "Release Request: Please send samples"))
     assert len(matches) == 1
     assert matches[0]["subject"].startswith("Release Request")
 
 
 def test_build_tools_returns_five_tools_after_task_3():
-    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(),
-                       state=S._empty_state())
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_Cfg(), state=S._empty_state())
     assert len(build_tools(ctx)) == 5
 ```
 
@@ -546,30 +574,35 @@ def _tool_check_sent_folder(ctx: AgentContext, subject_prefix: str) -> str:
 Extend `build_tools` (add the two @beta_tool closures and return them):
 
 ```python
-    @beta_tool
-    def read_warehouse_thread(thread_id: str) -> str:
-        """Read all messages in a warehouse thread.
+@beta_tool
+def read_warehouse_thread(thread_id: str) -> str:
+    """Read all messages in a warehouse thread.
 
-        Use this to look for a UPS tracking number in the warehouse's reply.
-        UPS format: 1Z followed by 16 alphanumeric chars, e.g. 1ZA123456789012345.
-        Returns JSON array of {message_id, from, subject, body_excerpt, internal_date}.
-        """
-        return _tool_read_warehouse_thread(ctx, thread_id)
+    Use this to look for a UPS tracking number in the warehouse's reply.
+    UPS format: 1Z followed by 16 alphanumeric chars, e.g. 1ZA123456789012345.
+    Returns JSON array of {message_id, from, subject, body_excerpt, internal_date}.
+    """
+    return _tool_read_warehouse_thread(ctx, thread_id)
 
-    @beta_tool
-    def check_sent_folder(subject_prefix: str) -> str:
-        """Check the Sent folder for messages to the warehouse matching a subject prefix.
 
-        Use this to detect drafts the user has manually sent. Typical
-        subject_prefix: 'Release Request: <original subject>'.
-        Returns JSON array of {message_id, thread_id, subject, internal_date}.
-        """
-        return _tool_check_sent_folder(ctx, subject_prefix)
+@beta_tool
+def check_sent_folder(subject_prefix: str) -> str:
+    """Check the Sent folder for messages to the warehouse matching a subject prefix.
 
-    return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-    ]
+    Use this to detect drafts the user has manually sent. Typical
+    subject_prefix: 'Release Request: <original subject>'.
+    Returns JSON array of {message_id, thread_id, subject, internal_date}.
+    """
+    return _tool_check_sent_folder(ctx, subject_prefix)
+
+
+return [
+    list_pending_emails,
+    list_released_requests,
+    get_state_summary,
+    read_warehouse_thread,
+    check_sent_folder,
+]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -623,18 +656,18 @@ class AgentContext:
     gmail: Any
     cfg: Any
     state: dict
-    ant_client: Any = None          # optional in tests where parser is stubbed
-    log: logging.Logger = field(
-        default_factory=lambda: logging.getLogger("sample_request.agent")
+    ant_client: Any = None  # optional in tests where parser is stubbed
+    log: logging.Logger = field(default_factory=lambda: logging.getLogger("sample_request.agent"))
+    actions: dict[str, int] = field(
+        default_factory=lambda: {
+            "ingested": 0,
+            "detected_sent": 0,
+            "shipped": 0,
+            "followups": 0,
+            "flagged": 0,
+            "errors": 0,
+        }
     )
-    actions: dict[str, int] = field(default_factory=lambda: {
-        "ingested": 0,
-        "detected_sent": 0,
-        "shipped": 0,
-        "followups": 0,
-        "flagged": 0,
-        "errors": 0,
-    })
 ```
 
 Append to `test_agent.py`:
@@ -652,22 +685,24 @@ class _CfgWithModel(_Cfg):
 
 def _ctx_with_ant(ant_client=None):
     return AgentContext(
-        gmail=FakeGmailClient(), cfg=_CfgWithModel(),
-        state=S._empty_state(), ant_client=ant_client or MagicMock(),
+        gmail=FakeGmailClient(),
+        cfg=_CfgWithModel(),
+        state=S._empty_state(),
+        ant_client=ant_client or MagicMock(),
     )
 
 
 def test_parse_email_content_success():
     parsed = ParsedRequest(
-        recipient="Alice", address="1 Main St",
+        recipient="Alice",
+        address="1 Main St",
         items=[ParsedItem(name="cup", qty=2)],
     )
     ctx = _ctx_with_ant()
-    with patch(
-        "backend.sample_request.agent.parse_request_body", return_value=parsed
-    ) as p:
-        result = json.loads(_tool_parse_email_content(
-            ctx, subject="s", body="please send 2 cups to Alice"))
+    with patch("backend.sample_request.agent.parse_request_body", return_value=parsed) as p:
+        result = json.loads(
+            _tool_parse_email_content(ctx, subject="s", body="please send 2 cups to Alice")
+        )
     p.assert_called_once()
     assert result["ok"] is True
     assert result["parsed"]["recipient"] == "Alice"
@@ -706,39 +741,46 @@ Add to `agent.py` (import `parse_request_body` at top: `from backend.sample_requ
 def _tool_parse_email_content(ctx: AgentContext, subject: str, body: str) -> str:
     try:
         parsed = parse_request_body(
-            body, subject,
+            body,
+            subject,
             client=ctx.ant_client,
             model=ctx.cfg.po_model,
         )
-    except Exception as exc:            # noqa: BLE001
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     return json.dumps({"ok": True, "parsed": parsed.model_dump()})
 ```
 
 Extend `build_tools`:
 
 ```python
-    @beta_tool
-    def parse_email_content(subject: str, body: str) -> str:
-        """Extract structured fields (recipient, address, items) from an email body.
+@beta_tool
+def parse_email_content(subject: str, body: str) -> str:
+    """Extract structured fields (recipient, address, items) from an email body.
 
-        Internally invokes a separate Claude call for strict-schema extraction.
-        Call this once per new pending email before creating a draft.
-        Returns JSON: on success {"ok": true, "parsed": {recipient, address,
-        items: [{name, qty, qty_unit, item_number}]}}; on failure
-        {"ok": false, "error_class": str, "message": str}.
-        """
-        return _tool_parse_email_content(ctx, subject, body)
+    Internally invokes a separate Claude call for strict-schema extraction.
+    Call this once per new pending email before creating a draft.
+    Returns JSON: on success {"ok": true, "parsed": {recipient, address,
+    items: [{name, qty, qty_unit, item_number}]}}; on failure
+    {"ok": false, "error_class": str, "message": str}.
+    """
+    return _tool_parse_email_content(ctx, subject, body)
 
-    return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-        parse_email_content,
-    ]
+
+return [
+    list_pending_emails,
+    list_released_requests,
+    get_state_summary,
+    read_warehouse_thread,
+    check_sent_folder,
+    parse_email_content,
+]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -791,24 +833,32 @@ from backend.sample_request.agent import _tool_create_release_draft
 def test_create_release_draft_creates_draft_and_updates_state():
     gmail = FakeGmailClient()
     msg = gmail.inject_pending(
-        from_="c@example.com", to="sales@example.com",
-        subject="need samples", body="send 2 cups to Alice",
+        from_="c@example.com",
+        to="sales@example.com",
+        subject="need samples",
+        body="send 2 cups to Alice",
     )
     ctx = AgentContext(
-        gmail=gmail, cfg=_CfgWithModel(), state=S._empty_state(),
+        gmail=gmail,
+        cfg=_CfgWithModel(),
+        state=S._empty_state(),
     )
     parsed = {
-        "recipient": "Alice", "address": "1 Main St",
-        "items": [{"name": "cup", "qty": 2, "qty_unit": "each",
-                   "item_number": None}],
+        "recipient": "Alice",
+        "address": "1 Main St",
+        "items": [{"name": "cup", "qty": 2, "qty_unit": "each", "item_number": None}],
     }
-    result = json.loads(_tool_create_release_draft(
-        ctx,
-        thread_id=msg.thread_id, message_id=msg.message_id,
-        subject=msg.subject, from_=msg.from_,
-        received_at=msg.internal_date,
-        parsed_json_str=json.dumps(parsed),
-    ))
+    result = json.loads(
+        _tool_create_release_draft(
+            ctx,
+            thread_id=msg.thread_id,
+            message_id=msg.message_id,
+            subject=msg.subject,
+            from_=msg.from_,
+            received_at=msg.internal_date,
+            parsed_json_str=json.dumps(parsed),
+        )
+    )
     assert result["ok"] is True
     assert result["draft_id"].startswith("draft-")
     # State updated
@@ -827,27 +877,35 @@ def test_create_release_draft_creates_draft_and_updates_state():
 def test_create_release_draft_returns_error_on_duplicate():
     gmail = FakeGmailClient()
     msg = gmail.inject_pending(
-        from_="c@example.com", to="sales@example.com",
-        subject="s", body="b",
+        from_="c@example.com",
+        to="sales@example.com",
+        subject="s",
+        body="b",
     )
-    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(),
-                       state=S._empty_state())
-    parsed = {"recipient": "A", "address": "x",
-              "items": [{"name": "cup", "qty": 1}]}
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=S._empty_state())
+    parsed = {"recipient": "A", "address": "x", "items": [{"name": "cup", "qty": 1}]}
     # First call succeeds
     _tool_create_release_draft(
-        ctx, thread_id=msg.thread_id, message_id=msg.message_id,
-        subject=msg.subject, from_=msg.from_,
+        ctx,
+        thread_id=msg.thread_id,
+        message_id=msg.message_id,
+        subject=msg.subject,
+        from_=msg.from_,
         received_at=msg.internal_date,
         parsed_json_str=json.dumps(parsed),
     )
     # Second call is a duplicate
-    result = json.loads(_tool_create_release_draft(
-        ctx, thread_id=msg.thread_id, message_id=msg.message_id,
-        subject=msg.subject, from_=msg.from_,
-        received_at=msg.internal_date,
-        parsed_json_str=json.dumps(parsed),
-    ))
+    result = json.loads(
+        _tool_create_release_draft(
+            ctx,
+            thread_id=msg.thread_id,
+            message_id=msg.message_id,
+            subject=msg.subject,
+            from_=msg.from_,
+            received_at=msg.internal_date,
+            parsed_json_str=json.dumps(parsed),
+        )
+    )
     assert result["ok"] is False
     assert result["error_class"] == "ValueError"
 
@@ -870,7 +928,11 @@ Add imports at top of `agent.py`:
 
 ```python
 from backend.sample_request.cli import (
-    LABEL_PENDING, LABEL_DRAFT, LABEL_RELEASED, LABEL_SHIPPED, LABEL_ATTENTION,
+    LABEL_PENDING,
+    LABEL_DRAFT,
+    LABEL_RELEASED,
+    LABEL_SHIPPED,
+    LABEL_ATTENTION,
 )
 from backend.sample_request.parser import ParsedRequest
 from backend.sample_request.sender import build_release_email
@@ -900,23 +962,30 @@ def _tool_create_release_draft(
             in_reply_to=None,
         )
         ctx.gmail.relabel(
-            message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+            message_id,
+            remove=[LABEL_PENDING],
+            add=[LABEL_DRAFT],
         )
         S.add_request(
             ctx.state,
-            thread_id=thread_id, message_id=message_id,
-            subject=subject, from_=from_, received_at=received_at,
+            thread_id=thread_id,
+            message_id=message_id,
+            subject=subject,
+            from_=from_,
+            received_at=received_at,
             parsed=parsed.model_dump(),
         )
         S.mark_draft_created(ctx.state, thread_id, draft_id=draft_id)
         S.reset_ingest_failure(ctx.state, message_id)
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["ingested"] += 1
     return json.dumps({"ok": True, "draft_id": draft_id})
 ```
@@ -924,31 +993,43 @@ def _tool_create_release_draft(
 Extend `build_tools`:
 
 ```python
-    @beta_tool
-    def create_release_draft(
-        thread_id: str, message_id: str, subject: str, from_: str,
-        received_at: str, parsed_json_str: str,
-    ) -> str:
-        """Create a Gmail draft to the warehouse, register the request in state,
-        and transition the pending email's label to draft-ready.
+@beta_tool
+def create_release_draft(
+    thread_id: str,
+    message_id: str,
+    subject: str,
+    from_: str,
+    received_at: str,
+    parsed_json_str: str,
+) -> str:
+    """Create a Gmail draft to the warehouse, register the request in state,
+    and transition the pending email's label to draft-ready.
 
-        parsed_json_str: the "parsed" object from parse_email_content, re-serialized
-        as a JSON string.
-        Returns JSON {"ok": true, "draft_id": str} or
-        {"ok": false, "error_class": str, "message": str}.
-        """
-        return _tool_create_release_draft(
-            ctx,
-            thread_id=thread_id, message_id=message_id,
-            subject=subject, from_=from_, received_at=received_at,
-            parsed_json_str=parsed_json_str,
-        )
+    parsed_json_str: the "parsed" object from parse_email_content, re-serialized
+    as a JSON string.
+    Returns JSON {"ok": true, "draft_id": str} or
+    {"ok": false, "error_class": str, "message": str}.
+    """
+    return _tool_create_release_draft(
+        ctx,
+        thread_id=thread_id,
+        message_id=message_id,
+        subject=subject,
+        from_=from_,
+        received_at=received_at,
+        parsed_json_str=parsed_json_str,
+    )
 
-    return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-        parse_email_content, create_release_draft,
-    ]
+
+return [
+    list_pending_emails,
+    list_released_requests,
+    get_state_summary,
+    read_warehouse_thread,
+    check_sent_folder,
+    parse_email_content,
+    create_release_draft,
+]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -995,7 +1076,8 @@ Append to `test_agent.py`:
 
 ```python
 from backend.sample_request.agent import (
-    _tool_mark_release_sent, _tool_mark_shipped,
+    _tool_mark_release_sent,
+    _tool_mark_shipped,
 )
 
 
@@ -1004,19 +1086,25 @@ def test_mark_release_sent_transitions_state_and_labels():
     msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
     state = S._empty_state()
     S.add_request(
-        state, thread_id=msg.thread_id, message_id=msg.message_id,
-        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id=msg.thread_id,
+        message_id=msg.message_id,
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "A", "address": "x", "items": []},
     )
     S.mark_draft_created(state, msg.thread_id, draft_id="d1")
     ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
-    result = json.loads(_tool_mark_release_sent(
-        ctx,
-        thread_id=msg.thread_id,
-        release_message_id="sent-1",
-        warehouse_thread_id="wt-1",
-        released_at="2026-07-14T01:00:00Z",
-    ))
+    result = json.loads(
+        _tool_mark_release_sent(
+            ctx,
+            thread_id=msg.thread_id,
+            release_message_id="sent-1",
+            warehouse_thread_id="wt-1",
+            released_at="2026-07-14T01:00:00Z",
+        )
+    )
     assert result["ok"] is True
     req = S.find_request(state, msg.thread_id)
     assert req["status"] == "released"
@@ -1031,21 +1119,32 @@ def test_mark_shipped_transitions_and_validates_tracking():
     msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
     state = S._empty_state()
     S.add_request(
-        state, thread_id=msg.thread_id, message_id=msg.message_id,
-        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id=msg.thread_id,
+        message_id=msg.message_id,
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "A", "address": "x", "items": []},
     )
     S.mark_draft_created(state, msg.thread_id, draft_id="d1")
-    S.mark_released(state, msg.thread_id, release_message_id="r1",
-                    warehouse_thread_id="wt-1",
-                    released_at="2026-07-14T01:00:00Z")
+    S.mark_released(
+        state,
+        msg.thread_id,
+        release_message_id="r1",
+        warehouse_thread_id="wt-1",
+        released_at="2026-07-14T01:00:00Z",
+    )
     ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
 
     # Valid UPS number (18 chars: 1Z + 16 alphanumeric).
-    result = json.loads(_tool_mark_shipped(
-        ctx, thread_id=msg.thread_id,
-        ups_tracking_no="1ZA123456789012345",
-    ))
+    result = json.loads(
+        _tool_mark_shipped(
+            ctx,
+            thread_id=msg.thread_id,
+            ups_tracking_no="1ZA123456789012345",
+        )
+    )
     assert result["ok"] is True
     assert S.find_request(state, msg.thread_id)["status"] == "shipped"
     assert "sample-request/shipped" in gmail.labels_on(msg.message_id)
@@ -1053,11 +1152,14 @@ def test_mark_shipped_transitions_and_validates_tracking():
 
 
 def test_mark_shipped_rejects_bad_tracking_string():
-    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(),
-                       state=S._empty_state())
-    result = json.loads(_tool_mark_shipped(
-        ctx, thread_id="t1", ups_tracking_no="NOTATRACKINGNUMBER",
-    ))
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(), state=S._empty_state())
+    result = json.loads(
+        _tool_mark_shipped(
+            ctx,
+            thread_id="t1",
+            ups_tracking_no="NOTATRACKINGNUMBER",
+        )
+    )
     assert result["ok"] is False
     assert result["error_class"] == "ValueError"
 
@@ -1080,37 +1182,47 @@ Add above `build_tools`:
 
 ```python
 def _tool_mark_release_sent(
-    ctx: AgentContext, *,
-    thread_id: str, release_message_id: str,
-    warehouse_thread_id: str, released_at: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    release_message_id: str,
+    warehouse_thread_id: str,
+    released_at: str,
 ) -> str:
     try:
         req = S.find_request(ctx.state, thread_id)
         if req is None:
             raise KeyError(f"thread_id not found: {thread_id}")
         S.mark_released(
-            ctx.state, thread_id,
+            ctx.state,
+            thread_id,
             release_message_id=release_message_id,
             warehouse_thread_id=warehouse_thread_id,
             released_at=released_at,
         )
         ctx.gmail.relabel(
             req["original_message_id"],
-            remove=[LABEL_DRAFT], add=[LABEL_RELEASED],
+            remove=[LABEL_DRAFT],
+            add=[LABEL_RELEASED],
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["detected_sent"] += 1
     return json.dumps({"ok": True})
 
 
 def _tool_mark_shipped(
-    ctx: AgentContext, *, thread_id: str, ups_tracking_no: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    ups_tracking_no: str,
 ) -> str:
     try:
         req = S.find_request(ctx.state, thread_id)
@@ -1119,15 +1231,18 @@ def _tool_mark_shipped(
         S.mark_shipped(ctx.state, thread_id, ups_tracking_no)
         ctx.gmail.relabel(
             req["original_message_id"],
-            remove=[LABEL_RELEASED], add=[LABEL_SHIPPED],
+            remove=[LABEL_RELEASED],
+            add=[LABEL_SHIPPED],
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["shipped"] += 1
     return json.dumps({"ok": True})
 ```
@@ -1135,44 +1250,56 @@ def _tool_mark_shipped(
 Extend `build_tools`:
 
 ```python
-    @beta_tool
-    def mark_release_sent(
-        thread_id: str, release_message_id: str,
-        warehouse_thread_id: str, released_at: str,
-    ) -> str:
-        """Record that the user has sent the release draft.
+@beta_tool
+def mark_release_sent(
+    thread_id: str,
+    release_message_id: str,
+    warehouse_thread_id: str,
+    released_at: str,
+) -> str:
+    """Record that the user has sent the release draft.
 
-        Call this after check_sent_folder finds a matching sent message.
-        Transitions state from draft_created to released and moves the
-        Gmail label from draft-ready to released.
-        released_at: ISO UTC timestamp string.
-        """
-        return _tool_mark_release_sent(
-            ctx, thread_id=thread_id,
-            release_message_id=release_message_id,
-            warehouse_thread_id=warehouse_thread_id,
-            released_at=released_at,
-        )
+    Call this after check_sent_folder finds a matching sent message.
+    Transitions state from draft_created to released and moves the
+    Gmail label from draft-ready to released.
+    released_at: ISO UTC timestamp string.
+    """
+    return _tool_mark_release_sent(
+        ctx,
+        thread_id=thread_id,
+        release_message_id=release_message_id,
+        warehouse_thread_id=warehouse_thread_id,
+        released_at=released_at,
+    )
 
-    @beta_tool
-    def mark_shipped(thread_id: str, ups_tracking_no: str) -> str:
-        """Record that the warehouse has shipped the sample.
 
-        Call this AFTER read_warehouse_thread returns a UPS tracking
-        number (format: 1Z + 16 alphanumeric chars). Transitions state
-        to shipped and moves the label. Rejects tracking strings that
-        don't match the UPS regex.
-        """
-        return _tool_mark_shipped(
-            ctx, thread_id=thread_id, ups_tracking_no=ups_tracking_no,
-        )
+@beta_tool
+def mark_shipped(thread_id: str, ups_tracking_no: str) -> str:
+    """Record that the warehouse has shipped the sample.
 
-    return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-        parse_email_content, create_release_draft,
-        mark_release_sent, mark_shipped,
-    ]
+    Call this AFTER read_warehouse_thread returns a UPS tracking
+    number (format: 1Z + 16 alphanumeric chars). Transitions state
+    to shipped and moves the label. Rejects tracking strings that
+    don't match the UPS regex.
+    """
+    return _tool_mark_shipped(
+        ctx,
+        thread_id=thread_id,
+        ups_tracking_no=ups_tracking_no,
+    )
+
+
+return [
+    list_pending_emails,
+    list_released_requests,
+    get_state_summary,
+    read_warehouse_thread,
+    check_sent_folder,
+    parse_email_content,
+    create_release_draft,
+    mark_release_sent,
+    mark_shipped,
+]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1220,7 +1347,8 @@ Append to `test_agent.py`:
 
 ```python
 from backend.sample_request.agent import (
-    _tool_send_followup_reply, _tool_flag_needs_attention,
+    _tool_send_followup_reply,
+    _tool_flag_needs_attention,
     _tool_record_failure,
 )
 
@@ -1228,26 +1356,41 @@ from backend.sample_request.agent import (
 def test_send_followup_reply_replies_in_warehouse_thread():
     gmail = FakeGmailClient()
     # Seed a warehouse thread
-    rec = gmail.inject_sent(to="warehouse@example.com",
-                            subject="Release Request: x",
-                            body="please release")
+    rec = gmail.inject_sent(
+        to="warehouse@example.com", subject="Release Request: x", body="please release"
+    )
     warehouse_tid = rec["thread_id"]
     msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
     state = S._empty_state()
     S.add_request(
-        state, thread_id=msg.thread_id, message_id=msg.message_id,
-        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
-        parsed={"recipient": "Alice", "address": "x",
-                "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}]},
+        state,
+        thread_id=msg.thread_id,
+        message_id=msg.message_id,
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
+        parsed={
+            "recipient": "Alice",
+            "address": "x",
+            "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}],
+        },
     )
     S.mark_draft_created(state, msg.thread_id, draft_id="d1")
-    S.mark_released(state, msg.thread_id, release_message_id="r1",
-                    warehouse_thread_id=warehouse_tid,
-                    released_at="2026-07-14T01:00:00Z")
+    S.mark_released(
+        state,
+        msg.thread_id,
+        release_message_id="r1",
+        warehouse_thread_id=warehouse_tid,
+        released_at="2026-07-14T01:00:00Z",
+    )
     ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=state)
-    result = json.loads(_tool_send_followup_reply(
-        ctx, thread_id=msg.thread_id, escalation_level=1,
-    ))
+    result = json.loads(
+        _tool_send_followup_reply(
+            ctx,
+            thread_id=msg.thread_id,
+            escalation_level=1,
+        )
+    )
     assert result["ok"] is True
     assert "reply_message_id" in result
     req = S.find_request(state, msg.thread_id)
@@ -1258,11 +1401,14 @@ def test_send_followup_reply_replies_in_warehouse_thread():
 def test_flag_needs_attention_adds_label():
     gmail = FakeGmailClient()
     msg = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
-    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(),
-                       state=S._empty_state())
-    result = json.loads(_tool_flag_needs_attention(
-        ctx, message_id=msg.message_id, reason="repeatedly failed",
-    ))
+    ctx = AgentContext(gmail=gmail, cfg=_CfgWithModel(), state=S._empty_state())
+    result = json.loads(
+        _tool_flag_needs_attention(
+            ctx,
+            message_id=msg.message_id,
+            reason="repeatedly failed",
+        )
+    )
     assert result["ok"] is True
     assert "sample-request/needs-attention" in gmail.labels_on(msg.message_id)
     assert ctx.actions["flagged"] == 1
@@ -1271,19 +1417,32 @@ def test_flag_needs_attention_adds_label():
 def test_record_failure_appends_and_returns_count():
     state = S._empty_state()
     S.add_request(
-        state, thread_id="t1", message_id="m1", subject="s",
-        from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id="t1",
+        message_id="m1",
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "A", "address": "x", "items": []},
     )
-    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(),
-                       state=state)
-    r1 = json.loads(_tool_record_failure(
-        ctx, thread_id="t1", step="mark_shipped", error_message="boom",
-    ))
+    ctx = AgentContext(gmail=FakeGmailClient(), cfg=_CfgWithModel(), state=state)
+    r1 = json.loads(
+        _tool_record_failure(
+            ctx,
+            thread_id="t1",
+            step="mark_shipped",
+            error_message="boom",
+        )
+    )
     assert r1["ok"] is True and r1["failure_count"] == 1
-    r2 = json.loads(_tool_record_failure(
-        ctx, thread_id="t1", step="mark_shipped", error_message="boom",
-    ))
+    r2 = json.loads(
+        _tool_record_failure(
+            ctx,
+            thread_id="t1",
+            step="mark_shipped",
+            error_message="boom",
+        )
+    )
     assert r2["failure_count"] == 2
     assert ctx.actions["errors"] == 2
 
@@ -1308,7 +1467,10 @@ Add above `build_tools`:
 
 ```python
 def _tool_send_followup_reply(
-    ctx: AgentContext, *, thread_id: str, escalation_level: int,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    escalation_level: int,
 ) -> str:
     try:
         req = S.find_request(ctx.state, thread_id)
@@ -1320,19 +1482,24 @@ def _tool_send_followup_reply(
         body = build_followup_email(req, escalation_level)
         reply_id = ctx.gmail.reply_in_thread(warehouse_thread, body)
         S.record_followup(ctx.state, thread_id, message_id=reply_id)
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["followups"] += 1
     return json.dumps({"ok": True, "reply_message_id": reply_id})
 
 
 def _tool_flag_needs_attention(
-    ctx: AgentContext, *, message_id: str, reason: str,
+    ctx: AgentContext,
+    *,
+    message_id: str,
+    reason: str,
 ) -> str:
     try:
         ctx.gmail.relabel(message_id, remove=[], add=[LABEL_ATTENTION])
@@ -1340,34 +1507,42 @@ def _tool_flag_needs_attention(
             "needs-attention flagged",
             extra={"message_id": message_id, "reason": reason[:200]},
         )
-    except Exception as exc:                # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         ctx.actions["errors"] += 1
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["flagged"] += 1
     return json.dumps({"ok": True})
 
 
 def _tool_record_failure(
-    ctx: AgentContext, *,
-    thread_id: str, step: str, error_message: str,
+    ctx: AgentContext,
+    *,
+    thread_id: str,
+    step: str,
+    error_message: str,
 ) -> str:
     try:
         n = S.append_tick_error(
-            ctx.state, thread_id,
+            ctx.state,
+            thread_id,
             step=step,
             error_class="AgentReported",
             message=error_message,
         )
-    except Exception as exc:                # noqa: BLE001
-        return json.dumps({
-            "ok": False,
-            "error_class": exc.__class__.__name__,
-            "message": str(exc)[:500],
-        })
+    except Exception as exc:  # noqa: BLE001
+        return json.dumps(
+            {
+                "ok": False,
+                "error_class": exc.__class__.__name__,
+                "message": str(exc)[:500],
+            }
+        )
     ctx.actions["errors"] += 1
     return json.dumps({"ok": True, "failure_count": n})
 ```
@@ -1375,50 +1550,69 @@ def _tool_record_failure(
 Extend `build_tools` (append three closures and update return list):
 
 ```python
-    @beta_tool
-    def send_followup_reply(thread_id: str, escalation_level: int) -> str:
-        """Send an escalating follow-up reply in the warehouse thread.
+@beta_tool
+def send_followup_reply(thread_id: str, escalation_level: int) -> str:
+    """Send an escalating follow-up reply in the warehouse thread.
 
-        escalation_level: 1 = gentle nudge, 2 = firmer ping,
-        3+ = final warning.
-        Returns JSON {"ok": true, "reply_message_id": str} or error.
-        """
-        return _tool_send_followup_reply(
-            ctx, thread_id=thread_id, escalation_level=escalation_level,
-        )
+    escalation_level: 1 = gentle nudge, 2 = firmer ping,
+    3+ = final warning.
+    Returns JSON {"ok": true, "reply_message_id": str} or error.
+    """
+    return _tool_send_followup_reply(
+        ctx,
+        thread_id=thread_id,
+        escalation_level=escalation_level,
+    )
 
-    @beta_tool
-    def flag_needs_attention(message_id: str, reason: str) -> str:
-        """Add the needs-attention label to a Gmail message.
 
-        Use this after 3+ consecutive failures on the same request.
-        Also useful for messages that are ambiguous or need human review.
-        """
-        return _tool_flag_needs_attention(
-            ctx, message_id=message_id, reason=reason,
-        )
+@beta_tool
+def flag_needs_attention(message_id: str, reason: str) -> str:
+    """Add the needs-attention label to a Gmail message.
 
-    @beta_tool
-    def record_failure(
-        thread_id: str, step: str, error_message: str,
-    ) -> str:
-        """Record a failure for a specific request; returns the cumulative count.
+    Use this after 3+ consecutive failures on the same request.
+    Also useful for messages that are ambiguous or need human review.
+    """
+    return _tool_flag_needs_attention(
+        ctx,
+        message_id=message_id,
+        reason=reason,
+    )
 
-        Call this whenever a tool returns ok=false so failure counts
-        persist across ticks. When failure_count reaches 3, follow up
-        with flag_needs_attention.
-        """
-        return _tool_record_failure(
-            ctx, thread_id=thread_id, step=step, error_message=error_message,
-        )
 
-    return [
-        list_pending_emails, list_released_requests, get_state_summary,
-        read_warehouse_thread, check_sent_folder,
-        parse_email_content, create_release_draft,
-        mark_release_sent, mark_shipped,
-        send_followup_reply, flag_needs_attention, record_failure,
-    ]
+@beta_tool
+def record_failure(
+    thread_id: str,
+    step: str,
+    error_message: str,
+) -> str:
+    """Record a failure for a specific request; returns the cumulative count.
+
+    Call this whenever a tool returns ok=false so failure counts
+    persist across ticks. When failure_count reaches 3, follow up
+    with flag_needs_attention.
+    """
+    return _tool_record_failure(
+        ctx,
+        thread_id=thread_id,
+        step=step,
+        error_message=error_message,
+    )
+
+
+return [
+    list_pending_emails,
+    list_released_requests,
+    get_state_summary,
+    read_warehouse_thread,
+    check_sent_folder,
+    parse_email_content,
+    create_release_draft,
+    mark_release_sent,
+    mark_shipped,
+    send_followup_reply,
+    flag_needs_attention,
+    record_failure,
+]
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -1548,7 +1742,7 @@ def run_agent_tick(cfg, *, gmail, ant_client):
 
     Returns a TickResult (same shape as workflow mode's run_tick).
     """
-    from backend.sample_request.cli import TickResult      # local: avoid cycle
+    from backend.sample_request.cli import TickResult  # local: avoid cycle
 
     tick_id = make_tick_id()
     log = setup_logger(cfg.log_path, tick_id)
@@ -1556,8 +1750,11 @@ def run_agent_tick(cfg, *, gmail, ant_client):
 
     state = S.load_state(cfg.state_file)
     ctx = AgentContext(
-        gmail=gmail, cfg=cfg, state=state,
-        ant_client=ant_client, log=log,
+        gmail=gmail,
+        cfg=cfg,
+        state=state,
+        ant_client=ant_client,
+        log=log,
     )
     tools = build_tools(ctx)
 
@@ -1573,19 +1770,16 @@ def run_agent_tick(cfg, *, gmail, ant_client):
             pass
     except Exception:
         log.exception("agent tick failed", extra={"step": "agent_tick"})
-        S.update_meta(state, last_tick_at=_iso_now(),
-                      last_tick_outcome="failed")
+        S.update_meta(state, last_tick_at=_iso_now(), last_tick_outcome="failed")
         S.save_state(cfg.state_file, state)
         return TickResult(**ctx.actions, outcome="failed")
 
     outcome = "ok" if ctx.actions["errors"] == 0 else "partial"
-    S.update_meta(state, last_tick_at=_iso_now(),
-                  last_tick_outcome=outcome)
+    S.update_meta(state, last_tick_at=_iso_now(), last_tick_outcome=outcome)
     S.save_state(cfg.state_file, state)
     log.info(
         "agent tick complete",
-        extra={"step": "agent_tick", "actions": ctx.actions,
-               "outcome": outcome},
+        extra={"step": "agent_tick", "actions": ctx.actions, "outcome": outcome},
     )
     return TickResult(**ctx.actions, outcome=outcome)
 ```
@@ -1600,7 +1794,7 @@ class TickResult(BaseModel):
     detected_sent: int = 0
     shipped: int = 0
     followups: int = 0
-    flagged: int = 0                       # new — used by agent mode
+    flagged: int = 0  # new — used by agent mode
     errors: int = 0
     outcome: str = "ok"
 ```
@@ -1669,6 +1863,7 @@ def test_tick_parser_default_agent_false():
 def test_tick_parser_rejects_agent_with_dry_run(capsys):
     parser = _build_parser()
     import pytest
+
     with pytest.raises(SystemExit):
         parser.parse_args(["tick", "--agent", "--dry-run"])
 ```
@@ -1686,14 +1881,15 @@ Expected: FAIL because `--agent` doesn't exist yet.
 Edit `backend/sample_request/cli.py`. Update `_build_parser` `tick` subparser section:
 
 ```python
-    sp = sub.add_parser("tick", help="Run one tick cycle")
-    grp = sp.add_mutually_exclusive_group()
-    grp.add_argument("--dry-run", action="store_true")
-    grp.add_argument(
-        "--agent", action="store_true",
-        help="Run in tool-using agent mode instead of the hardcoded workflow",
-    )
-    sp.set_defaults(func=_cmd_tick)
+sp = sub.add_parser("tick", help="Run one tick cycle")
+grp = sp.add_mutually_exclusive_group()
+grp.add_argument("--dry-run", action="store_true")
+grp.add_argument(
+    "--agent",
+    action="store_true",
+    help="Run in tool-using agent mode instead of the hardcoded workflow",
+)
+sp.set_defaults(func=_cmd_tick)
 ```
 
 Update `_cmd_tick` to branch on `args.agent`:
@@ -1706,12 +1902,15 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     gmail = GmailClient(cfg.token_path, cfg.credentials_path)
 
     import anthropic
+
     ant = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
 
     if args.agent:
         from backend.sample_request.agent import run_agent_tick
+
         result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
     else:
+
         def parser_fn(body: str, subject: str) -> ParsedRequest:
             return parse_request_body(body, subject, client=ant, model=cfg.po_model)
 
@@ -1772,11 +1971,13 @@ def _make_scripted_runner(script):
     Each callable simulates a Claude turn that invokes selected tools.
     Returns a factory suitable for ant.beta.messages.tool_runner.side_effect.
     """
+
     def _factory(**kwargs):
         tools = _tools_by_name(kwargs["tools"])
         for step in script:
             step(tools)
         return iter([])
+
     return _factory
 
 
@@ -1785,7 +1986,8 @@ def test_e2e_ingest_new_pending_email(tmp_path):
     cfg = _make_cfg(tmp_path)
     gmail = FakeGmailClient()
     msg = gmail.inject_pending(
-        from_="customer@example.com", to="sales@example.com",
+        from_="customer@example.com",
+        to="sales@example.com",
         subject="Sample please",
         body="Please send 3 cases of Item #190 orange bowls to Mike Chen, 1412 W 37th Pl Los Angeles CA 90007",
     )
@@ -1796,31 +1998,36 @@ def test_e2e_ingest_new_pending_email(tmp_path):
         pending = json.loads(tools["list_pending_emails"].run())
         assert len(pending) == 1
         entry = pending[0]
-        parse_result = json.loads(tools["parse_email_content"].run(
-            subject=entry["subject"], body=entry["body_excerpt"],
-        ))
+        parse_result = json.loads(
+            tools["parse_email_content"].run(
+                subject=entry["subject"],
+                body=entry["body_excerpt"],
+            )
+        )
         assert parse_result["ok"] is True
-        draft_result = json.loads(tools["create_release_draft"].run(
-            thread_id=entry["thread_id"], message_id=entry["message_id"],
-            subject=entry["subject"], from_=entry["from"],
-            received_at=entry["received_at"],
-            parsed_json_str=json.dumps(parse_result["parsed"]),
-        ))
+        draft_result = json.loads(
+            tools["create_release_draft"].run(
+                thread_id=entry["thread_id"],
+                message_id=entry["message_id"],
+                subject=entry["subject"],
+                from_=entry["from"],
+                received_at=entry["received_at"],
+                parsed_json_str=json.dumps(parse_result["parsed"]),
+            )
+        )
         assert draft_result["ok"] is True
 
     # Patch parse_request_body so no real Claude call is made.
     parsed = ParsedRequest(
         recipient="Mike Chen",
         address="1412 W 37th Pl Los Angeles CA 90007",
-        items=[ParsedItem(name="orange bowl", qty=3, qty_unit="cases",
-                          item_number="190")],
+        items=[ParsedItem(name="orange bowl", qty=3, qty_unit="cases", item_number="190")],
     )
     with patch(
         "backend.sample_request.agent.parse_request_body",
         return_value=parsed,
     ):
-        ant.beta.messages.tool_runner.side_effect = _make_scripted_runner(
-            [step1])
+        ant.beta.messages.tool_runner.side_effect = _make_scripted_runner([step1])
         result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
 
     assert result.outcome == "ok"
@@ -1837,25 +2044,34 @@ def test_e2e_ship_detection_from_warehouse_reply(tmp_path):
     cfg = _make_cfg(tmp_path)
     gmail = FakeGmailClient()
     orig = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
-    rec = gmail.inject_sent(to="warehouse@example.com",
-                            subject="Release Request: x",
-                            body="please release")
+    rec = gmail.inject_sent(
+        to="warehouse@example.com", subject="Release Request: x", body="please release"
+    )
     warehouse_tid = rec["thread_id"]
     gmail.inject_thread_reply(
-        warehouse_tid, from_="warehouse@example.com",
+        warehouse_tid,
+        from_="warehouse@example.com",
         body="Shipped; tracking 1ZA123456789012345",
     )
     # Seed state to released
     state = S._empty_state()
     S.add_request(
-        state, thread_id=orig.thread_id, message_id=orig.message_id,
-        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
+        state,
+        thread_id=orig.thread_id,
+        message_id=orig.message_id,
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
         parsed={"recipient": "A", "address": "x", "items": []},
     )
     S.mark_draft_created(state, orig.thread_id, draft_id="d1")
-    S.mark_released(state, orig.thread_id, release_message_id="r1",
-                    warehouse_thread_id=warehouse_tid,
-                    released_at="2026-07-14T01:00:00Z")
+    S.mark_released(
+        state,
+        orig.thread_id,
+        release_message_id="r1",
+        warehouse_thread_id=warehouse_tid,
+        released_at="2026-07-14T01:00:00Z",
+    )
     S.save_state(cfg.state_file, state)
 
     ant = MagicMock()
@@ -1868,13 +2084,16 @@ def test_e2e_ship_detection_from_warehouse_reply(tmp_path):
         thread = json.loads(tools["read_warehouse_thread"].run(thread_id=wt))
         # Extract tracking (Claude would do this via regex/reasoning)
         import re
-        matches = [re.search(r"1Z[0-9A-Z]{16}", m["body_excerpt"])
-                   for m in thread]
+
+        matches = [re.search(r"1Z[0-9A-Z]{16}", m["body_excerpt"]) for m in thread]
         tracking = next((m.group(0) for m in matches if m), None)
         assert tracking == "1ZA123456789012345"
-        result = json.loads(tools["mark_shipped"].run(
-            thread_id=thread_id, ups_tracking_no=tracking,
-        ))
+        result = json.loads(
+            tools["mark_shipped"].run(
+                thread_id=thread_id,
+                ups_tracking_no=tracking,
+            )
+        )
         assert result["ok"] is True
 
     ant.beta.messages.tool_runner.side_effect = _make_scripted_runner([step1])
@@ -1893,29 +2112,43 @@ def test_e2e_send_followup_when_stale(tmp_path):
     cfg = _make_cfg(tmp_path)
     gmail = FakeGmailClient()
     orig = gmail.inject_pending(from_="c@e", to="s@e", subject="s", body="b")
-    rec = gmail.inject_sent(to="warehouse@example.com",
-                            subject="Release Request: x", body="please")
+    rec = gmail.inject_sent(to="warehouse@example.com", subject="Release Request: x", body="please")
     warehouse_tid = rec["thread_id"]
     state = S._empty_state()
     S.add_request(
-        state, thread_id=orig.thread_id, message_id=orig.message_id,
-        subject="s", from_="c@e", received_at="2026-07-14T00:00:00Z",
-        parsed={"recipient": "Alice", "address": "x",
-                "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}]},
+        state,
+        thread_id=orig.thread_id,
+        message_id=orig.message_id,
+        subject="s",
+        from_="c@e",
+        received_at="2026-07-14T00:00:00Z",
+        parsed={
+            "recipient": "Alice",
+            "address": "x",
+            "items": [{"name": "cup", "qty": 1, "qty_unit": "each"}],
+        },
     )
     S.mark_draft_created(state, orig.thread_id, draft_id="d1")
     # released 5 hours ago
     old_ts = "2026-07-14T00:00:00Z"
-    S.mark_released(state, orig.thread_id, release_message_id="r1",
-                    warehouse_thread_id=warehouse_tid, released_at=old_ts)
+    S.mark_released(
+        state,
+        orig.thread_id,
+        release_message_id="r1",
+        warehouse_thread_id=warehouse_tid,
+        released_at=old_ts,
+    )
     S.save_state(cfg.state_file, state)
     ant = MagicMock()
 
     def step1(tools):
         released = json.loads(tools["list_released_requests"].run())
-        result = json.loads(tools["send_followup_reply"].run(
-            thread_id=released[0]["thread_id"], escalation_level=1,
-        ))
+        result = json.loads(
+            tools["send_followup_reply"].run(
+                thread_id=released[0]["thread_id"],
+                escalation_level=1,
+            )
+        )
         assert result["ok"] is True
 
     ant.beta.messages.tool_runner.side_effect = _make_scripted_runner([step1])
@@ -1954,8 +2187,7 @@ def _run_agent_tick_with_script(cfg, gmail, ant_client, script):
         return iter([])
 
     ant_client.beta.messages.tool_runner.side_effect = _factory
-    with patch("backend.sample_request.agent.build_tools",
-               side_effect=build_and_capture):
+    with patch("backend.sample_request.agent.build_tools", side_effect=build_and_capture):
         return run_agent_tick(cfg, gmail=gmail, ant_client=ant_client)
 ```
 

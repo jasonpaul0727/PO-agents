@@ -1,9 +1,9 @@
 """Tests for the JSON line logger."""
+
 from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 
 from backend.sample_request.log import make_tick_id, setup_logger
 
@@ -15,7 +15,7 @@ def test_make_tick_id_is_8_hex_chars():
 
 def test_make_tick_id_is_random():
     seen = {make_tick_id() for _ in range(100)}
-    assert len(seen) > 95   # vanishingly unlikely to collide
+    assert len(seen) > 95  # vanishingly unlikely to collide
 
 
 def test_setup_logger_writes_json_lines_with_tick_id(tmp_path):

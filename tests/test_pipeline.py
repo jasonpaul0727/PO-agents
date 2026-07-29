@@ -3,7 +3,7 @@ import io
 from reportlab.pdfgen import canvas
 
 from backend import pipeline
-from backend.models import ExtractedPO, POHeader, LineItem, OrderStatus
+from backend.models import ExtractedPO, LineItem, OrderStatus, POHeader
 from tests.conftest import FakeClient
 
 
@@ -27,7 +27,11 @@ def test_pipeline_produces_ready_draft(repo):
     order, steps = pipeline.run_pipeline(_pdf("PURCHASE ORDER\n..."), repo, client)
 
     assert [s["step"] for s in steps] == [
-        "intake", "extraction", "validation", "exception", "draft"
+        "intake",
+        "extraction",
+        "validation",
+        "exception",
+        "draft",
     ]
     assert order.line_items[0].warehouse_quantity == 30
     assert order.line_items[0].difference == 20
@@ -44,7 +48,11 @@ def test_pipeline_image_pdf_falls_back_to_vision(repo):
     order, steps = pipeline.run_pipeline(_pdf(""), repo, client)
 
     assert [s["step"] for s in steps] == [
-        "intake", "extraction", "validation", "exception", "draft"
+        "intake",
+        "extraction",
+        "validation",
+        "exception",
+        "draft",
     ]
     assert order.header.customer == "ACME Corp"
     assert order.line_items[0].item_number == "ITEM-1001"

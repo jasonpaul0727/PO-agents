@@ -1,5 +1,5 @@
 from backend.agents import validation
-from backend.models import ExtractedPO, POHeader, LineItem
+from backend.models import ExtractedPO, LineItem, POHeader
 
 
 def test_valid_po_has_no_issues(repo, valid_po):
@@ -43,8 +43,9 @@ def test_check_commits_flags_overstock():
     po = ExtractedPO(
         header=POHeader(customer="ACME Corp", po_number="PO-8"),
         line_items=[
-            LineItem(item_number="ITEM-1001", order_quantity=50,
-                     warehouse_quantity=30, manual_commit=40)
+            LineItem(
+                item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30, manual_commit=40
+            )
         ],
     )
     issues = validation.check_commits(po)
@@ -55,8 +56,9 @@ def test_check_commits_passes_within_stock():
     po = ExtractedPO(
         header=POHeader(customer="ACME Corp", po_number="PO-8"),
         line_items=[
-            LineItem(item_number="ITEM-1001", order_quantity=50,
-                     warehouse_quantity=30, manual_commit=25)
+            LineItem(
+                item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30, manual_commit=25
+            )
         ],
     )
     assert validation.check_commits(po) == []

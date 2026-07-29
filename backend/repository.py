@@ -159,13 +159,9 @@ class Repository:
         self.conn.commit()
 
     def is_duplicate_po(self, po_number: str) -> bool:
-        cur = self.conn.execute(
-            "SELECT 1 FROM submitted_pos WHERE po_number = ?", (po_number,)
-        )
+        cur = self.conn.execute("SELECT 1 FROM submitted_pos WHERE po_number = ?", (po_number,))
         return cur.fetchone() is not None
 
     def record_po(self, po_number: str) -> None:
-        self.conn.execute(
-            "INSERT OR IGNORE INTO submitted_pos(po_number) VALUES (?)", (po_number,)
-        )
+        self.conn.execute("INSERT OR IGNORE INTO submitted_pos(po_number) VALUES (?)", (po_number,))
         self.conn.commit()

@@ -142,6 +142,7 @@ See docs/superpowers/specs/2026-06-29-sample-request-gmail-api-design.md.
 
 ```python
 """Entry point for `python -m backend.sample_request`."""
+
 from __future__ import annotations
 
 import sys
@@ -239,6 +240,7 @@ Create `backend/sample_request/tests/test_config.py`:
 
 ```python
 """Tests for sample-request config loader."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -306,6 +308,7 @@ Create `backend/sample_request/config.py`:
 
 ```python
 """Configuration loader for the sample-request module."""
+
 from __future__ import annotations
 
 import os
@@ -337,27 +340,15 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
 
     missing = [k for k in _REQUIRED if not env.get(k)]
     if missing:
-        raise ValueError(
-            "missing required env vars: " + ", ".join(missing)
-        )
+        raise ValueError("missing required env vars: " + ", ".join(missing))
 
     return Config(
         warehouse_email=env["SAMPLE_REQUEST_WAREHOUSE_EMAIL"],
-        followup_threshold_hours=float(
-            env.get("SAMPLE_REQUEST_FOLLOWUP_HOURS", "4.0")
-        ),
-        state_file=Path(env.get(
-            "SAMPLE_REQUEST_STATE_FILE", ".sample_requests_state.json"
-        )),
-        token_path=Path(env.get(
-            "SAMPLE_REQUEST_TOKEN_PATH", "secrets/token.json"
-        )),
-        credentials_path=Path(env.get(
-            "SAMPLE_REQUEST_CREDS_PATH", "secrets/credentials.json"
-        )),
-        log_path=Path(env.get(
-            "SAMPLE_REQUEST_LOG_PATH", "logs/sample_request_tick.log"
-        )),
+        followup_threshold_hours=float(env.get("SAMPLE_REQUEST_FOLLOWUP_HOURS", "4.0")),
+        state_file=Path(env.get("SAMPLE_REQUEST_STATE_FILE", ".sample_requests_state.json")),
+        token_path=Path(env.get("SAMPLE_REQUEST_TOKEN_PATH", "secrets/token.json")),
+        credentials_path=Path(env.get("SAMPLE_REQUEST_CREDS_PATH", "secrets/credentials.json")),
+        log_path=Path(env.get("SAMPLE_REQUEST_LOG_PATH", "logs/sample_request_tick.log")),
         anthropic_api_key=env["ANTHROPIC_API_KEY"],
         po_model=env.get("PO_MODEL", "claude-opus-4-8"),
     )
@@ -400,6 +391,7 @@ Create `backend/sample_request/tests/test_log.py`:
 
 ```python
 """Tests for the JSON line logger."""
+
 from __future__ import annotations
 
 import json
@@ -416,7 +408,7 @@ def test_make_tick_id_is_8_hex_chars():
 
 def test_make_tick_id_is_random():
     seen = {make_tick_id() for _ in range(100)}
-    assert len(seen) > 95   # vanishingly unlikely to collide
+    assert len(seen) > 95  # vanishingly unlikely to collide
 
 
 def test_setup_logger_writes_json_lines_with_tick_id(tmp_path):
@@ -463,6 +455,7 @@ Create `backend/sample_request/log.py`:
 
 ```python
 """Structured JSON line logger for sample-request tick runs."""
+
 from __future__ import annotations
 
 import json
@@ -482,10 +475,27 @@ def make_tick_id() -> str:
 class _JsonFormatter(logging.Formatter):
     _LEVEL_MAP = {"WARNING": "WARN", "CRITICAL": "FATAL"}
     _STANDARD = {
-        "name", "msg", "args", "levelname", "levelno", "pathname",
-        "filename", "module", "exc_info", "exc_text", "stack_info",
-        "lineno", "funcName", "created", "msecs", "relativeCreated",
-        "thread", "threadName", "processName", "process", "message",
+        "name",
+        "msg",
+        "args",
+        "levelname",
+        "levelno",
+        "pathname",
+        "filename",
+        "module",
+        "exc_info",
+        "exc_text",
+        "stack_info",
+        "lineno",
+        "funcName",
+        "created",
+        "msecs",
+        "relativeCreated",
+        "thread",
+        "threadName",
+        "processName",
+        "process",
+        "message",
         "taskName",
     }
 
@@ -579,6 +589,7 @@ Create `backend/sample_request/tests/test_state.py`:
 
 ```python
 """Tests for state.py — schema v2, migration, and mutation helpers."""
+
 from __future__ import annotations
 
 import json
@@ -591,23 +602,29 @@ from backend.sample_request import state as S
 
 def _seed_v1(path: Path) -> None:
     """Write an old-schema (no meta) state file with one released request."""
-    path.write_text(json.dumps({
-        "requests": [{
-            "thread_id": "T1",
-            "original_message_id": "M1",
-            "subject": "Sample request to Polar",
-            "from": "yanxiabu001@gmail.com",
-            "received_at": "2026-06-29T09:18:05Z",
-            "parsed": {"recipient": "Y", "address": "A", "items": []},
-            "warehouse_thread_id": "W1",
-            "release_message_id": "W1",
-            "released_at": "2026-06-29T09:21:17Z",
-            "follow_ups": [],
-            "ups_tracking_no": None,
-            "shipped_at": None,
-            "status": "released",
-        }]
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "requests": [
+                    {
+                        "thread_id": "T1",
+                        "original_message_id": "M1",
+                        "subject": "Sample request to Polar",
+                        "from": "yanxiabu001@gmail.com",
+                        "received_at": "2026-06-29T09:18:05Z",
+                        "parsed": {"recipient": "Y", "address": "A", "items": []},
+                        "warehouse_thread_id": "W1",
+                        "release_message_id": "W1",
+                        "released_at": "2026-06-29T09:21:17Z",
+                        "follow_ups": [],
+                        "ups_tracking_no": None,
+                        "shipped_at": None,
+                        "status": "released",
+                    }
+                ]
+            }
+        )
+    )
 
 
 def test_load_state_missing_file_returns_empty_v2(tmp_path):
@@ -648,8 +665,10 @@ def test_add_request_appends_and_returns_record(tmp_path):
     state = S.load_state(tmp_path / "s.json")
     req = S.add_request(
         state,
-        thread_id="T2", message_id="M2",
-        subject="Sample request — test", from_="x@y.z",
+        thread_id="T2",
+        message_id="M2",
+        subject="Sample request — test",
+        from_="x@y.z",
         received_at="2026-06-29T22:00:00Z",
         parsed={"recipient": "Bob", "address": "1 St", "items": []},
     )
@@ -663,22 +682,37 @@ def test_add_request_appends_and_returns_record(tmp_path):
 def test_add_request_rejects_duplicate_message_id(tmp_path):
     state = S.load_state(tmp_path / "s.json")
     S.add_request(
-        state, thread_id="T1", message_id="M1",
-        subject="s", from_="x", received_at="2026-06-29T00:00:00Z",
+        state,
+        thread_id="T1",
+        message_id="M1",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
         parsed={},
     )
     with pytest.raises(ValueError, match="duplicate"):
         S.add_request(
-            state, thread_id="T1b", message_id="M1",
-            subject="s", from_="x", received_at="2026-06-29T00:00:00Z",
+            state,
+            thread_id="T1b",
+            message_id="M1",
+            subject="s",
+            from_="x",
+            received_at="2026-06-29T00:00:00Z",
             parsed={},
         )
 
 
 def test_mark_draft_created_sets_fields(tmp_path):
     state = S.load_state(tmp_path / "s.json")
-    S.add_request(state, thread_id="T", message_id="M", subject="s",
-                  from_="x", received_at="2026-06-29T00:00:00Z", parsed={})
+    S.add_request(
+        state,
+        thread_id="T",
+        message_id="M",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
+        parsed={},
+    )
     S.mark_draft_created(state, "T", draft_id="d-1")
     req = S.find_request(state, "T")
     assert req["draft_id"] == "d-1"
@@ -687,11 +721,19 @@ def test_mark_draft_created_sets_fields(tmp_path):
 
 def test_mark_released_transitions_status(tmp_path):
     state = S.load_state(tmp_path / "s.json")
-    S.add_request(state, thread_id="T", message_id="M", subject="s",
-                  from_="x", received_at="2026-06-29T00:00:00Z", parsed={})
+    S.add_request(
+        state,
+        thread_id="T",
+        message_id="M",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
+        parsed={},
+    )
     S.mark_draft_created(state, "T", draft_id="d-1")
     S.mark_released(
-        state, "T",
+        state,
+        "T",
         release_message_id="W1",
         warehouse_thread_id="W1",
         released_at="2026-06-29T10:00:00Z",
@@ -705,8 +747,15 @@ def test_mark_released_transitions_status(tmp_path):
 
 def test_mark_shipped_validates_ups_regex(tmp_path):
     state = S.load_state(tmp_path / "s.json")
-    S.add_request(state, thread_id="T", message_id="M", subject="s",
-                  from_="x", received_at="2026-06-29T00:00:00Z", parsed={})
+    S.add_request(
+        state,
+        thread_id="T",
+        message_id="M",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
+        parsed={},
+    )
     with pytest.raises(ValueError, match="UPS"):
         S.mark_shipped(state, "T", "not-a-real-tracking")
     S.mark_shipped(state, "T", "1ZA1234567890123456")
@@ -717,8 +766,15 @@ def test_mark_shipped_validates_ups_regex(tmp_path):
 
 def test_record_followup_appends_and_sets_last_contact(tmp_path):
     state = S.load_state(tmp_path / "s.json")
-    S.add_request(state, thread_id="T", message_id="M", subject="s",
-                  from_="x", received_at="2026-06-29T00:00:00Z", parsed={})
+    S.add_request(
+        state,
+        thread_id="T",
+        message_id="M",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
+        parsed={},
+    )
     S.mark_released(state, "T", "W", "W", "2026-06-29T10:00:00Z")
     S.record_followup(state, "T", message_id="F1", sent_at="2026-06-29T15:00:00Z")
     S.record_followup(state, "T", message_id="F2", sent_at="2026-06-29T19:00:00Z")
@@ -729,19 +785,29 @@ def test_record_followup_appends_and_sets_last_contact(tmp_path):
 
 def test_append_tick_error_caps_at_ten_returns_count(tmp_path):
     state = S.load_state(tmp_path / "s.json")
-    S.add_request(state, thread_id="T", message_id="M", subject="s",
-                  from_="x", received_at="2026-06-29T00:00:00Z", parsed={})
+    S.add_request(
+        state,
+        thread_id="T",
+        message_id="M",
+        subject="s",
+        from_="x",
+        received_at="2026-06-29T00:00:00Z",
+        parsed={},
+    )
     counts = [
         S.append_tick_error(
-            state, "T", step="parser",
-            error_class="ValidationError", message=f"err{i}",
+            state,
+            "T",
+            step="parser",
+            error_class="ValidationError",
+            message=f"err{i}",
         )
         for i in range(12)
     ]
     req = S.find_request(state, "T")
-    assert counts[-1] == 10                         # capped
+    assert counts[-1] == 10  # capped
     assert len(req["tick_errors"]) == 10
-    assert req["tick_errors"][0]["message"] == "err2"   # oldest two evicted
+    assert req["tick_errors"][0]["message"] == "err2"  # oldest two evicted
     assert req["tick_errors"][-1]["message"] == "err11"
 
 
@@ -777,6 +843,7 @@ Create `backend/sample_request/state.py`:
 
 ```python
 """State file (`.sample_requests_state.json`) load/save and mutations."""
+
 from __future__ import annotations
 
 import json
@@ -959,10 +1026,12 @@ def record_followup(
     sent_at: str | None = None,
 ) -> None:
     req = _require(state, thread_id)
-    req.setdefault("follow_ups", []).append({
-        "sent_at": sent_at or now_iso(),
-        "message_id": message_id,
-    })
+    req.setdefault("follow_ups", []).append(
+        {
+            "sent_at": sent_at or now_iso(),
+            "message_id": message_id,
+        }
+    )
 
 
 def append_tick_error(
@@ -976,13 +1045,15 @@ def append_tick_error(
 ) -> int:
     req = _require(state, thread_id)
     errs = req.setdefault("tick_errors", [])
-    errs.append({
-        "at": now_iso(),
-        "step": step,
-        "error_class": error_class,
-        "message": message,
-        "raw_excerpt": (raw_excerpt or "")[:500] or None,
-    })
+    errs.append(
+        {
+            "at": now_iso(),
+            "step": step,
+            "error_class": error_class,
+            "message": message,
+            "raw_excerpt": (raw_excerpt or "")[:500] or None,
+        }
+    )
     if len(errs) > _MAX_TICK_ERRORS:
         del errs[: len(errs) - _MAX_TICK_ERRORS]
     return len(errs)
@@ -1070,6 +1141,7 @@ Create `backend/sample_request/tests/test_parser.py`:
 
 ```python
 """Tests for parser.py — Claude structured parsing of email body."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -1154,6 +1226,7 @@ Create `backend/sample_request/parser.py`:
 
 ```python
 """Email-body structured parser backed by the Anthropic SDK."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -1211,8 +1284,9 @@ def parse_request_body(
     client: "anthropic.Anthropic | None" = None,
     model: str = "claude-opus-4-8",
 ) -> ParsedRequest:
-    if client is None:                          # pragma: no cover - real-call path
+    if client is None:  # pragma: no cover - real-call path
         import anthropic
+
         client = anthropic.Anthropic()
 
     response = client.messages.parse(
@@ -1220,10 +1294,12 @@ def parse_request_body(
         max_tokens=2048,
         system=_SYSTEM_PROMPT,
         response_model=ParsedRequest,
-        messages=[{
-            "role": "user",
-            "content": f"Subject: {subject}\n\n{body}",
-        }],
+        messages=[
+            {
+                "role": "user",
+                "content": f"Subject: {subject}\n\n{body}",
+            }
+        ],
     )
 
     if getattr(response, "stop_reason", "") == "refusal":
@@ -1276,6 +1352,7 @@ Create `backend/sample_request/tests/test_sender.py`:
 
 ```python
 """Tests for sender.py — email body builders."""
+
 from __future__ import annotations
 
 import pytest
@@ -1315,7 +1392,7 @@ def test_build_release_body_has_recipient_address_items_and_ups_ask():
     assert "Item #190 | Kid snack salmon | Qty: 3 case" in body
     assert "Widget | Qty: 1 each" in body
     assert "UPS tracking number" in body
-    assert "yanxiabu001@gmail.com" in body          # "on behalf of"
+    assert "yanxiabu001@gmail.com" in body  # "on behalf of"
 
 
 def test_followup_text_differs_by_index():
@@ -1355,6 +1432,7 @@ Create `backend/sample_request/sender.py`:
 
 ```python
 """Compose release-request and follow-up email bodies."""
+
 from __future__ import annotations
 
 from backend.sample_request.parser import ParsedRequest
@@ -1402,7 +1480,6 @@ _FOLLOWUP_TEMPLATES = (
     "Items requested:\n{items}\n\n"
     "Thanks,\n"
     "PO Intake Agent\n",
-
     # n=2: firmer ping
     "Hi Warehouse,\n\n"
     "Checking in again on the release request for {recipient} (sent {released_at}).\n"
@@ -1411,7 +1488,6 @@ _FOLLOWUP_TEMPLATES = (
     "Items:\n{items}\n\n"
     "Thanks,\n"
     "PO Intake Agent\n",
-
     # n>=3: escalation
     "Hi Warehouse,\n\n"
     "This is a final automated follow-up on the sample release request for\n"
@@ -1494,6 +1570,7 @@ git commit -m "feat(sample_request): release and follow-up email body builders"
 
 ```python
 """Shared pytest fixtures for sample_request tests."""
+
 from __future__ import annotations
 
 import os
@@ -1532,6 +1609,7 @@ def fake_gmail() -> FakeGmailClient:
 This is what the integration tests run against. The real GmailClient
 (Task 8) provides the same surface against the Gmail API.
 """
+
 from __future__ import annotations
 
 from collections import defaultdict
@@ -1548,7 +1626,7 @@ class FakeGmailMessage:
     to: str
     subject: str
     body: str
-    internal_date: str   # ISO UTC
+    internal_date: str  # ISO UTC
 
 
 def _now_iso() -> str:
@@ -1590,9 +1668,7 @@ class FakeGmailClient:
     def fetch_thread(self, thread_id: str) -> list[FakeGmailMessage]:
         self._maybe_fail("fetch_thread")
         return [
-            self._messages[mid]
-            for mid in self._threads.get(thread_id, [])
-            if mid in self._messages
+            self._messages[mid] for mid in self._threads.get(thread_id, []) if mid in self._messages
         ]
 
     def create_draft(
@@ -1605,13 +1681,15 @@ class FakeGmailClient:
         self._maybe_fail("create_draft")
         draft_id = f"draft-{self._next_draft_id}"
         self._next_draft_id += 1
-        self.drafts_created.append({
-            "draft_id": draft_id,
-            "to": to,
-            "subject": subject,
-            "body": body,
-            "in_reply_to": in_reply_to,
-        })
+        self.drafts_created.append(
+            {
+                "draft_id": draft_id,
+                "to": to,
+                "subject": subject,
+                "body": body,
+                "in_reply_to": in_reply_to,
+            }
+        )
         return draft_id
 
     def reply_in_thread(self, thread_id: str, body: str) -> str:
@@ -1648,7 +1726,7 @@ class FakeGmailClient:
     def ensure_labels(self, names: list[str]) -> dict[str, str]:
         self._maybe_fail("ensure_labels")
         for n in names:
-            self._labels_known.setdefault(n, f"label-{len(self._labels_known)+1}")
+            self._labels_known.setdefault(n, f"label-{len(self._labels_known) + 1}")
         return {n: self._labels_known[n] for n in names}
 
     # ---- test helpers -----------------------------------------------------
@@ -1664,8 +1742,12 @@ class FakeGmailClient:
         mid = self._mint_id("msg")
         tid = self._mint_id("thread")
         msg = FakeGmailMessage(
-            message_id=mid, thread_id=tid, from_=from_, to=to,
-            subject=subject, body=body,
+            message_id=mid,
+            thread_id=tid,
+            from_=from_,
+            to=to,
+            subject=subject,
+            body=body,
             internal_date=internal_date or _now_iso(),
         )
         self._messages[mid] = msg
@@ -1707,8 +1789,11 @@ class FakeGmailClient:
     ) -> FakeGmailMessage:
         mid = self._mint_id("reply")
         msg = FakeGmailMessage(
-            message_id=mid, thread_id=thread_id, from_=from_,
-            to="me@example.com", subject="Re: …",
+            message_id=mid,
+            thread_id=thread_id,
+            from_=from_,
+            to="me@example.com",
+            subject="Re: …",
             body=body,
             internal_date=internal_date or _now_iso(),
         )
@@ -1729,9 +1814,7 @@ class FakeGmailClient:
         if exc is None:
             exc = RuntimeError(f"forced failure in {method_name}")
         for _ in range(times):
-            self._fail_plan[method_name].append(
-                exc() if callable(exc) else exc
-            )
+            self._fail_plan[method_name].append(exc() if callable(exc) else exc)
 
     # ---- internals --------------------------------------------------------
 
@@ -1815,6 +1898,7 @@ This file is intentionally not unit-tested (see spec §6). Integration tests
 use FakeGmailClient (tests/fake_gmail.py) which mirrors this surface.
 Verify behaviour via the manual smoke checklist in README.md.
 """
+
 from __future__ import annotations
 
 import base64
@@ -1853,15 +1937,13 @@ class GmailMessage:
     to: str
     subject: str
     body: str
-    internal_date: str          # ISO UTC
+    internal_date: str  # ISO UTC
 
 
 def load_credentials(token_path: Path, credentials_path: Path) -> Credentials:
     creds: Credentials | None = None
     if token_path.exists():
-        creds = Credentials.from_authorized_user_file(
-            str(token_path), GMAIL_SCOPES
-        )
+        creds = Credentials.from_authorized_user_file(str(token_path), GMAIL_SCOPES)
     if creds and creds.valid:
         return creds
     if creds and creds.expired and creds.refresh_token:
@@ -1874,9 +1956,7 @@ def load_credentials(token_path: Path, credentials_path: Path) -> Credentials:
             f"OAuth credentials not found at {credentials_path}. "
             "Run `python3 -m backend.sample_request.auth` first."
         )
-    flow = InstalledAppFlow.from_client_secrets_file(
-        str(credentials_path), GMAIL_SCOPES
-    )
+    flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), GMAIL_SCOPES)
     creds = flow.run_local_server(port=0)
     token_path.parent.mkdir(parents=True, exist_ok=True)
     token_path.write_text(creds.to_json())
@@ -1895,18 +1975,14 @@ def _extract_body(payload: dict) -> str:
             if mime == "text/plain":
                 data = part.get("body", {}).get("data")
                 if data:
-                    return base64.urlsafe_b64decode(data + "==").decode(
-                        "utf-8", errors="replace"
-                    )
+                    return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
         for part in payload["parts"]:
             txt = _extract_body(part)
             if txt:
                 return txt
     data = payload.get("body", {}).get("data")
     if data:
-        return base64.urlsafe_b64decode(data + "==").decode(
-            "utf-8", errors="replace"
-        )
+        return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="replace")
     return ""
 
 
@@ -1923,31 +1999,59 @@ class GmailClient:
     # ---- reads ------------------------------------------------------------
 
     def fetch_pending(self) -> list[GmailMessage]:
-        label_id = self.ensure_labels(
-            ["sample-request/pending-release"]
-        )["sample-request/pending-release"]
-        listing = self._svc.users().messages().list(
-            userId="me", labelIds=[label_id], maxResults=50,
-        ).execute()
+        label_id = self.ensure_labels(["sample-request/pending-release"])[
+            "sample-request/pending-release"
+        ]
+        listing = (
+            self._svc.users()
+            .messages()
+            .list(
+                userId="me",
+                labelIds=[label_id],
+                maxResults=50,
+            )
+            .execute()
+        )
         return [self._get_message(m["id"]) for m in listing.get("messages", [])]
 
     def fetch_sent_to(self, to: str, subject_prefix: str) -> list[GmailMessage]:
         query = f'from:me to:{to} subject:"{subject_prefix}" newer_than:1d'
-        listing = self._svc.users().messages().list(
-            userId="me", q=query, maxResults=50,
-        ).execute()
+        listing = (
+            self._svc.users()
+            .messages()
+            .list(
+                userId="me",
+                q=query,
+                maxResults=50,
+            )
+            .execute()
+        )
         return [self._get_message(m["id"]) for m in listing.get("messages", [])]
 
     def fetch_thread(self, thread_id: str) -> list[GmailMessage]:
-        thread = self._svc.users().threads().get(
-            userId="me", id=thread_id, format="full",
-        ).execute()
+        thread = (
+            self._svc.users()
+            .threads()
+            .get(
+                userId="me",
+                id=thread_id,
+                format="full",
+            )
+            .execute()
+        )
         return [self._to_gmail_message(m) for m in thread.get("messages", [])]
 
     def _get_message(self, message_id: str) -> GmailMessage:
-        msg = self._svc.users().messages().get(
-            userId="me", id=message_id, format="full",
-        ).execute()
+        msg = (
+            self._svc.users()
+            .messages()
+            .get(
+                userId="me",
+                id=message_id,
+                format="full",
+            )
+            .execute()
+        )
         return self._to_gmail_message(msg)
 
     def _to_gmail_message(self, msg: dict) -> GmailMessage:
@@ -1980,16 +2084,29 @@ class GmailClient:
             mime["References"] = in_reply_to
         mime.set_content(body)
         raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
-        draft = self._svc.users().drafts().create(
-            userId="me", body={"message": {"raw": raw}},
-        ).execute()
+        draft = (
+            self._svc.users()
+            .drafts()
+            .create(
+                userId="me",
+                body={"message": {"raw": raw}},
+            )
+            .execute()
+        )
         return draft["id"]
 
     def reply_in_thread(self, thread_id: str, body: str) -> str:
-        thread = self._svc.users().threads().get(
-            userId="me", id=thread_id, format="metadata",
-            metadataHeaders=["Subject", "From", "Message-ID"],
-        ).execute()
+        thread = (
+            self._svc.users()
+            .threads()
+            .get(
+                userId="me",
+                id=thread_id,
+                format="metadata",
+                metadataHeaders=["Subject", "From", "Message-ID"],
+            )
+            .execute()
+        )
         first = thread["messages"][0]
         headers = _headers_to_dict(first.get("payload", {}).get("headers", []))
         subj = headers.get("subject", "")
@@ -2006,10 +2123,15 @@ class GmailClient:
             mime["References"] = in_reply_to
         mime.set_content(body)
         raw = base64.urlsafe_b64encode(mime.as_bytes()).decode()
-        sent = self._svc.users().messages().send(
-            userId="me",
-            body={"raw": raw, "threadId": thread_id},
-        ).execute()
+        sent = (
+            self._svc.users()
+            .messages()
+            .send(
+                userId="me",
+                body={"raw": raw, "threadId": thread_id},
+            )
+            .execute()
+        )
         return sent["id"]
 
     # ---- labels -----------------------------------------------------------
@@ -2024,14 +2146,19 @@ class GmailClient:
             if n in by_name:
                 out[n] = by_name[n]
             else:
-                created = self._svc.users().labels().create(
-                    userId="me",
-                    body={
-                        "name": n,
-                        "labelListVisibility": "labelShow",
-                        "messageListVisibility": "show",
-                    },
-                ).execute()
+                created = (
+                    self._svc.users()
+                    .labels()
+                    .create(
+                        userId="me",
+                        body={
+                            "name": n,
+                            "labelListVisibility": "labelShow",
+                            "messageListVisibility": "show",
+                        },
+                    )
+                    .execute()
+                )
                 out[n] = created["id"]
             self._label_cache[n] = out[n]
         return out
@@ -2096,6 +2223,7 @@ operational Gmail labels.
 
     python3 -m backend.sample_request.auth
 """
+
 from __future__ import annotations
 
 import sys
@@ -2136,9 +2264,11 @@ def main() -> int:
     for name in LABEL_NAMES:
         print(f"  {name}: {ids[name]}")
 
-    print("\nNext: create a Gmail filter in the web UI matching "
-          "`subject:\"sample request\"` and apply the "
-          "`sample-request/pending-release` label.")
+    print(
+        "\nNext: create a Gmail filter in the web UI matching "
+        '`subject:"sample request"` and apply the '
+        "`sample-request/pending-release` label."
+    )
     return 0
 
 
@@ -2204,6 +2334,7 @@ Create `backend/sample_request/tests/test_cli_ingest.py`:
 
 ```python
 """Integration test: tick ingest step (Task 10)."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock
@@ -2216,11 +2347,13 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 def _make_parser(parsed: ParsedRequest):
     def _fn(body: str, subject: str) -> ParsedRequest:
         return parsed
+
     return _fn
 
 
 def test_ingest_new_email_creates_draft_relabels_and_records_state(
-    config, fake_gmail,
+    config,
+    fake_gmail,
 ):
     msg = fake_gmail.inject_pending(
         from_="customer@example.com",
@@ -2264,7 +2397,9 @@ def test_ingest_idempotent_does_not_double_draft(config, fake_gmail):
         body="please send Widget",
     )
     parsed = ParsedRequest(
-        recipient="Bob", address="2 Main", items=[ParsedItem(name="Widget", qty=1)],
+        recipient="Bob",
+        address="2 Main",
+        items=[ParsedItem(name="Widget", qty=1)],
     )
     # First tick relabels msg, but pretend the user manually put the label back.
     run_tick(config, gmail=fake_gmail, parser_fn=_make_parser(parsed))
@@ -2277,7 +2412,7 @@ def test_ingest_idempotent_does_not_double_draft(config, fake_gmail):
     result = run_tick(config, gmail=fake_gmail, parser_fn=_make_parser(parsed))
 
     assert result.ingested == 0
-    assert len(fake_gmail.drafts_created) == 1   # still 1 — second skipped
+    assert len(fake_gmail.drafts_created) == 1  # still 1 — second skipped
     # label restored to draft-ready (label state machine)
     assert "sample-request/draft-ready" in fake_gmail.labels_on(msg.message_id)
 
@@ -2309,6 +2444,7 @@ The `tick` subcommand is the cron entry point. It composes:
   3. check_shipments (Task 12)
   4. send_followups  (Task 13)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -2352,13 +2488,13 @@ def _iso(dt: datetime) -> str:
 
 # ---- ingest step ----------------------------------------------------------
 
+
 def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -> int:
     msgs = gmail.fetch_pending()
     count = 0
     for msg in msgs:
         existing = next(
-            (r for r in state["requests"]
-             if r.get("original_message_id") == msg.message_id),
+            (r for r in state["requests"] if r.get("original_message_id") == msg.message_id),
             None,
         )
         if existing is not None:
@@ -2369,7 +2505,9 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             )
             if not dry_run:
                 gmail.relabel(
-                    msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+                    msg.message_id,
+                    remove=[LABEL_PENDING],
+                    add=[LABEL_DRAFT],
                 )
             continue
 
@@ -2393,7 +2531,9 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
                 in_reply_to=None,
             )
             gmail.relabel(
-                msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+                msg.message_id,
+                remove=[LABEL_PENDING],
+                add=[LABEL_DRAFT],
             )
             S.add_request(
                 state,
@@ -2419,6 +2559,7 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
 
 # ---- run_tick orchestrator ------------------------------------------------
 
+
 def run_tick(
     cfg: Config,
     *,
@@ -2434,7 +2575,8 @@ def run_tick(
 
     state_path = (
         cfg.state_file.with_suffix(cfg.state_file.suffix + f".dryrun.{tick_id}")
-        if dry_run else cfg.state_file
+        if dry_run
+        else cfg.state_file
     )
     state = S.load_state(cfg.state_file)
     result = TickResult()
@@ -2442,7 +2584,7 @@ def run_tick(
     try:
         result.ingested = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
         # detect_sent / check_shipments / send_followups arrive in later tasks
-    except Exception as exc:           # noqa: BLE001 — surface but keep going
+    except Exception as exc:  # noqa: BLE001 — surface but keep going
         log.exception("tick failed", extra={"step": "tick"})
         result.outcome = "failed"
         S.update_meta(state, last_tick_at=_iso(now_fn()), last_tick_outcome="failed")
@@ -2462,6 +2604,7 @@ def run_tick(
 
 # ---- CLI entry ------------------------------------------------------------
 
+
 def _cmd_tick(args: argparse.Namespace) -> int:
     cfg = load_config()
     from backend.sample_request.gmail_client import GmailClient
@@ -2469,6 +2612,7 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     gmail = GmailClient(cfg.token_path, cfg.credentials_path)
 
     import anthropic
+
     ant = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
 
     def parser_fn(body: str, subject: str) -> ParsedRequest:
@@ -2489,7 +2633,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     if cfg.state_file.exists() and not args.force:
         print(f"state file already exists at {cfg.state_file} (use --force)", file=sys.stderr)
         return 1
-    S.save_state(cfg.state_file, S._empty_state())     # noqa: SLF001
+    S.save_state(cfg.state_file, S._empty_state())  # noqa: SLF001
     print(f"initialized empty state file at {cfg.state_file}")
     return 0
 
@@ -2517,7 +2661,7 @@ def main(argv: list[str] | None = None) -> int:
     return args.func(args)
 
 
-if __name__ == "__main__":                                # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())
 ```
 
@@ -2558,6 +2702,7 @@ Create `backend/sample_request/tests/test_cli_detect_sent.py`:
 
 ```python
 """Integration test: detect_sent step (Task 11)."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -2573,7 +2718,8 @@ def _ingest_one(config, fake_gmail) -> str:
         body="...",
     )
     parsed = ParsedRequest(
-        recipient="Mike", address="1 St",
+        recipient="Mike",
+        address="1 St",
         items=[ParsedItem(name="W", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)
@@ -2726,6 +2872,7 @@ Create `backend/sample_request/tests/test_cli_check_shipments.py`:
 
 ```python
 """Integration test: check_shipments step (Task 12)."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -2735,11 +2882,14 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 
 def _seed_released(config, fake_gmail) -> tuple[str, str]:
     msg = fake_gmail.inject_pending(
-        from_="cust@example.com", to="me@example.com",
-        subject="Sample request — Z", body="...",
+        from_="cust@example.com",
+        to="me@example.com",
+        subject="Sample request — Z",
+        body="...",
     )
     parsed = ParsedRequest(
-        recipient="Z", address="A",
+        recipient="Z",
+        address="A",
         items=[ParsedItem(name="X", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)
@@ -2757,7 +2907,8 @@ def _seed_released(config, fake_gmail) -> tuple[str, str]:
 def test_check_shipments_no_ups_keeps_state(config, fake_gmail):
     orig_id, thread_id = _seed_released(config, fake_gmail)
     fake_gmail.inject_thread_reply(
-        thread_id, from_="warehouse@example.com",
+        thread_id,
+        from_="warehouse@example.com",
         body="Got it, working on this shortly.",
     )
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
@@ -2769,7 +2920,8 @@ def test_check_shipments_no_ups_keeps_state(config, fake_gmail):
 def test_check_shipments_ups_present_marks_shipped(config, fake_gmail):
     orig_id, thread_id = _seed_released(config, fake_gmail)
     fake_gmail.inject_thread_reply(
-        thread_id, from_="warehouse@example.com",
+        thread_id,
+        from_="warehouse@example.com",
         body="Shipped via UPS. Tracking: 1ZA1234567890123456 — ETA 2 days.",
     )
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
@@ -2884,6 +3036,7 @@ Create `backend/sample_request/tests/test_cli_send_followups.py`:
 
 ```python
 """Integration test: send_followups step (Task 13)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -2895,11 +3048,14 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 
 def _seed_released(config, fake_gmail, released_iso: str) -> tuple[str, str]:
     msg = fake_gmail.inject_pending(
-        from_="cust@example.com", to="me@example.com",
-        subject="Sample request — late", body="...",
+        from_="cust@example.com",
+        to="me@example.com",
+        subject="Sample request — late",
+        body="...",
     )
     parsed = ParsedRequest(
-        recipient="Late", address="L",
+        recipient="Late",
+        address="L",
         items=[ParsedItem(name="X", qty=1)],
     )
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: parsed)
@@ -2915,18 +3071,14 @@ def _seed_released(config, fake_gmail, released_iso: str) -> tuple[str, str]:
 
 
 def test_followup_skipped_when_recent(config, fake_gmail):
-    recent = (
-        datetime.now(timezone.utc) - timedelta(hours=1)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    recent = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     _seed_released(config, fake_gmail, recent)
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
     assert result.followups == 0
 
 
 def test_followup_sent_when_threshold_exceeded(config, fake_gmail):
-    stale = (
-        datetime.now(timezone.utc) - timedelta(hours=5)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stale = (datetime.now(timezone.utc) - timedelta(hours=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
     orig_id, thread_id = _seed_released(config, fake_gmail, stale)
     result = run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
     assert result.followups == 1
@@ -2939,9 +3091,7 @@ def test_followup_sent_when_threshold_exceeded(config, fake_gmail):
 
 
 def test_followup_message_changes_each_send(config, fake_gmail):
-    stale = (
-        datetime.now(timezone.utc) - timedelta(hours=20)
-    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stale = (datetime.now(timezone.utc) - timedelta(hours=20)).strftime("%Y-%m-%dT%H:%M:%SZ")
     _orig, thread_id = _seed_released(config, fake_gmail, stale)
     # First tick sends follow-up #1
     run_tick(config, gmail=fake_gmail, parser_fn=lambda b, s: None)
@@ -2975,7 +3125,7 @@ Expected: tests fail (`followups` never increments).
 In `backend/sample_request/cli.py`, add `import time` near the top imports, then add this function after `_check_shipments`:
 
 ```python
-import time   # at top of file with other imports
+import time  # at top of file with other imports
 
 
 def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> int:
@@ -2993,6 +3143,7 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             continue
         n_th = len(req.get("follow_ups", [])) + 1
         from backend.sample_request.sender import build_followup_email
+
         body = build_followup_email(req, n_th)
         if dry_run:
             log.info(
@@ -3025,10 +3176,15 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
 Update `run_tick`'s try block to add the new call (note we now thread `now_fn` to `_send_followups`):
 
 ```python
-        result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
-        result.followups = _send_followups(
-            cfg, gmail, state, log, dry_run=dry_run, now_fn=now_fn,
-        )
+result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
+result.followups = _send_followups(
+    cfg,
+    gmail,
+    state,
+    log,
+    dry_run=dry_run,
+    now_fn=now_fn,
+)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -3076,6 +3232,7 @@ Create `backend/sample_request/tests/test_cli_errors.py`:
 
 ```python
 """Integration tests: retries, tick_errors, needs-attention escalation (Task 14)."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -3093,14 +3250,18 @@ from backend.sample_request.parser import (
 
 def _parsed_ok() -> ParsedRequest:
     return ParsedRequest(
-        recipient="R", address="A", items=[ParsedItem(name="X", qty=1)],
+        recipient="R",
+        address="A",
+        items=[ParsedItem(name="X", qty=1)],
     )
 
 
 def test_parser_failure_records_tick_error_and_keeps_label(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — bad", body="garbage",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — bad",
+        body="garbage",
     )
 
     def bad_parser(body, subject):
@@ -3120,8 +3281,10 @@ def test_parser_failure_records_tick_error_and_keeps_label(config, fake_gmail):
 
 def test_three_consecutive_failures_adds_needs_attention_label(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — bad2", body="garbage",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — bad2",
+        body="garbage",
     )
 
     def bad_parser(body, subject):
@@ -3135,8 +3298,10 @@ def test_three_consecutive_failures_adds_needs_attention_label(config, fake_gmai
 
 def test_transient_gmail_failure_is_retried_then_succeeds(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — flaky", body="b",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — flaky",
+        body="b",
     )
     # Force the first 2 create_draft attempts to raise transient errors
     from googleapiclient.errors import HttpError
@@ -3164,8 +3329,10 @@ def test_transient_gmail_failure_is_retried_then_succeeds(config, fake_gmail):
 
 def test_transient_failure_exhausted_records_error(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — broken", body="b",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — broken",
+        body="b",
     )
     from googleapiclient.errors import HttpError
 
@@ -3191,8 +3358,10 @@ def test_transient_failure_exhausted_records_error(config, fake_gmail):
 
 def test_relabel_failure_is_fatal_exit_1(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — relabel", body="b",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — relabel",
+        body="b",
     )
     from googleapiclient.errors import HttpError
 
@@ -3255,11 +3424,11 @@ def _retry(
     for attempt in range(retries):
         try:
             return call()
-        except Exception as exc:                     # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             if not _is_transient(exc):
                 raise
             last_exc = exc
-            sleep_fn(base * (4 ** attempt))          # 1s, 4s, 16s
+            sleep_fn(base * (4**attempt))  # 1s, 4s, 16s
     raise TransientError(str(last_exc)) from last_exc
 ```
 
@@ -3273,8 +3442,7 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
     errors = 0
     for msg in msgs:
         existing = next(
-            (r for r in state["requests"]
-             if r.get("original_message_id") == msg.message_id),
+            (r for r in state["requests"] if r.get("original_message_id") == msg.message_id),
             None,
         )
         if existing is not None:
@@ -3284,16 +3452,22 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             )
             if not dry_run:
                 gmail.relabel(
-                    msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+                    msg.message_id,
+                    remove=[LABEL_PENDING],
+                    add=[LABEL_DRAFT],
                 )
             continue
 
         try:
             parsed = parser_fn(msg.body, msg.subject)
-        except Exception as exc:                     # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             _record_pending_message_error(
-                cfg, gmail, state, log, msg,
+                cfg,
+                gmail,
+                state,
+                log,
+                msg,
                 step="parser",
                 exc=exc,
                 raw_excerpt=msg.body,
@@ -3315,16 +3489,22 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             continue
 
         try:
-            draft_id = _retry(lambda: gmail.create_draft(
-                to=cfg.warehouse_email,
-                subject=subject,
-                body=body,
-                in_reply_to=None,
-            ))
-        except Exception as exc:                     # noqa: BLE001
+            draft_id = _retry(
+                lambda: gmail.create_draft(
+                    to=cfg.warehouse_email,
+                    subject=subject,
+                    body=body,
+                    in_reply_to=None,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             _record_pending_message_error(
-                cfg, gmail, state, log, msg,
+                cfg,
+                gmail,
+                state,
+                log,
+                msg,
                 step="create_draft",
                 exc=exc,
                 raw_excerpt=None,
@@ -3361,8 +3541,15 @@ Add this helper just above `_ingest`:
 
 ```python
 def _record_pending_message_error(
-    cfg: Config, gmail, state: dict, log, msg, *,
-    step: str, exc: Exception, raw_excerpt: str | None,
+    cfg: Config,
+    gmail,
+    state: dict,
+    log,
+    msg,
+    *,
+    step: str,
+    exc: Exception,
+    raw_excerpt: str | None,
 ) -> None:
     """Record a per-message error for a request that has not yet been
     added to state (i.e. failed during ingest before `add_request`).
@@ -3390,7 +3577,9 @@ def _record_pending_message_error(
 Update `_send_followups` to wrap the reply with `_retry` and append `tick_errors` on terminal failure (apply the same shape as the new `_ingest`):
 
 ```python
-def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> tuple[int, int]:
+def _send_followups(
+    cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn
+) -> tuple[int, int]:
     """Returns (followups_sent, errors)."""
     count = 0
     errors = 0
@@ -3407,6 +3596,7 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             continue
         n_th = len(req.get("follow_ups", [])) + 1
         from backend.sample_request.sender import build_followup_email
+
         body = build_followup_email(req, n_th)
         if dry_run:
             log.info(
@@ -3421,10 +3611,11 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             continue
         try:
             new_msg_id = _retry(lambda: gmail.reply_in_thread(warehouse_thread, body))
-        except Exception as exc:                     # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             n = S.append_tick_error(
-                state, req["thread_id"],
+                state,
+                req["thread_id"],
                 step="send_followups",
                 error_class=exc.__class__.__name__,
                 message=str(exc)[:500],
@@ -3439,7 +3630,9 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             )
             if n >= 3:
                 gmail.relabel(
-                    req["original_message_id"], remove=[], add=[LABEL_ATTENTION],
+                    req["original_message_id"],
+                    remove=[],
+                    add=[LABEL_ATTENTION],
                 )
                 log.warning(
                     "needs-attention label added",
@@ -3464,25 +3657,30 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
 Update `run_tick`'s try block to capture the new (count, errors) tuples and accumulate errors:
 
 ```python
-    try:
-        ingested, ingest_errs = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
-        result.ingested = ingested
-        result.errors += ingest_errs
+try:
+    ingested, ingest_errs = _ingest(cfg, gmail, parser_fn, state, log, dry_run=dry_run)
+    result.ingested = ingested
+    result.errors += ingest_errs
 
-        result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
-        result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
+    result.detected_sent = _detect_sent(cfg, gmail, state, log, dry_run=dry_run)
+    result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
 
-        followups, fu_errs = _send_followups(
-            cfg, gmail, state, log, dry_run=dry_run, now_fn=now_fn,
-        )
-        result.followups = followups
-        result.errors += fu_errs
-    except Exception:
-        log.exception("tick failed", extra={"step": "tick"})
-        result.outcome = "failed"
-        S.update_meta(state, last_tick_at=_iso(now_fn()), last_tick_outcome="failed")
-        S.save_state(state_path, state)
-        return result
+    followups, fu_errs = _send_followups(
+        cfg,
+        gmail,
+        state,
+        log,
+        dry_run=dry_run,
+        now_fn=now_fn,
+    )
+    result.followups = followups
+    result.errors += fu_errs
+except Exception:
+    log.exception("tick failed", extra={"step": "tick"})
+    result.outcome = "failed"
+    S.update_meta(state, last_tick_at=_iso(now_fn()), last_tick_outcome="failed")
+    S.save_state(state_path, state)
+    return result
 ```
 
 Update the outcome selection at the end:
@@ -3529,6 +3727,7 @@ Create `backend/sample_request/tests/test_cli_dry_run.py`:
 
 ```python
 """Verification: --dry-run path makes no Gmail writes and writes a sidecar state file."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -3538,11 +3737,14 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 
 def test_dry_run_no_draft_no_relabel_writes_sidecar_state(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — dryrun", body="b",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — dryrun",
+        body="b",
     )
     parsed = ParsedRequest(
-        recipient="R", address="A",
+        recipient="R",
+        address="A",
         items=[ParsedItem(name="X", qty=1)],
     )
 
@@ -3597,6 +3799,7 @@ Create `backend/sample_request/tests/test_cli_status.py`:
 
 ```python
 """Test for the status subcommand."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -3612,8 +3815,11 @@ def test_render_status_empty_state(tmp_path):
 def test_render_status_with_requests(tmp_path):
     state = S.load_state(tmp_path / "s.json")
     S.add_request(
-        state, thread_id="T1", message_id="M1",
-        subject="Sample request — A", from_="c@example.com",
+        state,
+        thread_id="T1",
+        message_id="M1",
+        subject="Sample request — A",
+        from_="c@example.com",
         received_at="2026-06-29T09:00:00Z",
         parsed={"recipient": "Mike", "address": "1 St", "items": []},
     )
@@ -3645,8 +3851,7 @@ def _render_status(state: dict) -> str:
     requests = state.get("requests", [])
     meta = state.get("meta", {})
     header = (
-        f"last tick: {meta.get('last_tick_at') or 'never'} "
-        f"({meta.get('last_tick_outcome') or '-'})"
+        f"last tick: {meta.get('last_tick_at') or 'never'} ({meta.get('last_tick_outcome') or '-'})"
     )
     if not requests:
         return f"{header}\nNo sample requests on file.\n"
@@ -3659,9 +3864,9 @@ def _render_status(state: dict) -> str:
     for r in requests:
         parsed = r.get("parsed") or {}
         lines.append(
-            f"{r.get('thread_id','')!s:<22} "
-            f"{r.get('status','')!s:<14} "
-            f"{parsed.get('recipient','')!s:<20} "
+            f"{r.get('thread_id', '')!s:<22} "
+            f"{r.get('status', '')!s:<14} "
+            f"{parsed.get('recipient', '')!s:<20} "
             f"{r.get('released_at') or '-':<22} "
             f"follow-ups: {len(r.get('follow_ups') or [])!s:<3}  "
             f"errors: {len(r.get('tick_errors') or [])}"
@@ -3717,6 +3922,7 @@ Open `scripts/sample_followup_tick.py` and replace the **entire file** with:
 ```python
 #!/usr/bin/env python3
 """Compatibility shim — real implementation lives in backend.sample_request.cli."""
+
 from __future__ import annotations
 
 from backend.sample_request.cli import main

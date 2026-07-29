@@ -1,4 +1,5 @@
 """Verification: --dry-run path makes no Gmail writes and writes a sidecar state file."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -8,11 +9,14 @@ from backend.sample_request.parser import ParsedItem, ParsedRequest
 
 def test_dry_run_no_draft_no_relabel_writes_sidecar_state(config, fake_gmail):
     msg = fake_gmail.inject_pending(
-        from_="c@example.com", to="me@example.com",
-        subject="Sample request — dryrun", body="b",
+        from_="c@example.com",
+        to="me@example.com",
+        subject="Sample request — dryrun",
+        body="b",
     )
     parsed = ParsedRequest(
-        recipient="R", address="A",
+        recipient="R",
+        address="A",
         items=[ParsedItem(name="X", qty=1)],
     )
 

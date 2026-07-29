@@ -1,11 +1,9 @@
-from backend.repository import Repository, Item
+from backend.repository import Item, Repository
 
 
 def make_repo(tmp_path):
     (tmp_path / "customers.json").write_text('[{"name": "ACME"}]')
-    (tmp_path / "items.json").write_text(
-        '[{"item_number": "ITEM-1001", "warehouse_quantity": 30}]'
-    )
+    (tmp_path / "items.json").write_text('[{"item_number": "ITEM-1001", "warehouse_quantity": 30}]')
     return Repository(db_path=":memory:", seed_dir=str(tmp_path))
 
 

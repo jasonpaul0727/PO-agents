@@ -17,9 +17,11 @@ def require_demo_auth(credentials: HTTPBasicCredentials | None = Depends(_basic)
     if not user or not pw:
         return
 
-    ok = credentials is not None and secrets.compare_digest(
-        credentials.username, user
-    ) and secrets.compare_digest(credentials.password, pw)
+    ok = (
+        credentials is not None
+        and secrets.compare_digest(credentials.username, user)
+        and secrets.compare_digest(credentials.password, pw)
+    )
     if not ok:
         raise HTTPException(
             status_code=401,

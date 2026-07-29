@@ -223,15 +223,15 @@ from pydantic import BaseModel
 class LineItem(BaseModel):
     item_number: str
     order_quantity: int
-    unit_price: float | None = None             # extracted
-    line_total: float | None = None             # derived = unit_price * order_quantity
-    warehouse_quantity: int = 0                 # backfilled by Exception
-    inventory_commit: int = 0                   # = min(order_quantity, warehouse_quantity)
-    manual_commit: int | None = None            # operator override, 0..warehouse_quantity
-    committed_quantity: int = 0                 # = manual_commit if set else inventory_commit
-    difference: int = 0                         # = order_quantity - committed_quantity
-    cut_reason_type: str | None = None          # set when difference > 0
-    on_the_way_quantity: int = 0                # 0..difference (info only)
+    unit_price: float | None = None  # extracted
+    line_total: float | None = None  # derived = unit_price * order_quantity
+    warehouse_quantity: int = 0  # backfilled by Exception
+    inventory_commit: int = 0  # = min(order_quantity, warehouse_quantity)
+    manual_commit: int | None = None  # operator override, 0..warehouse_quantity
+    committed_quantity: int = 0  # = manual_commit if set else inventory_commit
+    difference: int = 0  # = order_quantity - committed_quantity
+    cut_reason_type: str | None = None  # set when difference > 0
+    on_the_way_quantity: int = 0  # 0..difference (info only)
     on_the_way_tracking_no: str | None = None
     note: str | None = None
 
@@ -304,9 +304,7 @@ from backend.repository import Repository, Item
 
 def make_repo(tmp_path):
     (tmp_path / "customers.json").write_text('[{"name": "ACME"}]')
-    (tmp_path / "items.json").write_text(
-        '[{"item_number": "ITEM-1001", "warehouse_quantity": 30}]'
-    )
+    (tmp_path / "items.json").write_text('[{"item_number": "ITEM-1001", "warehouse_quantity": 30}]')
     return Repository(db_path=":memory:", seed_dir=str(tmp_path))
 
 
@@ -400,15 +398,11 @@ class Repository:
         return Item(item_number=row[0], warehouse_quantity=row[1]) if row else None
 
     def is_duplicate_po(self, po_number: str) -> bool:
-        cur = self.conn.execute(
-            "SELECT 1 FROM submitted_pos WHERE po_number = ?", (po_number,)
-        )
+        cur = self.conn.execute("SELECT 1 FROM submitted_pos WHERE po_number = ?", (po_number,))
         return cur.fetchone() is not None
 
     def record_po(self, po_number: str) -> None:
-        self.conn.execute(
-            "INSERT OR IGNORE INTO submitted_pos(po_number) VALUES (?)", (po_number,)
-        )
+        self.conn.execute("INSERT OR IGNORE INTO submitted_pos(po_number) VALUES (?)", (po_number,))
         self.conn.commit()
 ```
 
@@ -696,8 +690,9 @@ def test_check_commits_flags_overstock():
     po = ExtractedPO(
         header=POHeader(customer="ACME Corp", po_number="PO-8"),
         line_items=[
-            LineItem(item_number="ITEM-1001", order_quantity=50,
-                     warehouse_quantity=30, manual_commit=40)
+            LineItem(
+                item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30, manual_commit=40
+            )
         ],
     )
     issues = validation.check_commits(po)
@@ -708,8 +703,9 @@ def test_check_commits_passes_within_stock():
     po = ExtractedPO(
         header=POHeader(customer="ACME Corp", po_number="PO-8"),
         line_items=[
-            LineItem(item_number="ITEM-1001", order_quantity=50,
-                     warehouse_quantity=30, manual_commit=25)
+            LineItem(
+                item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30, manual_commit=25
+            )
         ],
     )
     assert validation.check_commits(po) == []
@@ -731,24 +727,52 @@ def validate(po: ExtractedPO, repo) -> list[Issue]:
     issues: list[Issue] = []
 
     if not po.header.customer:
-        issues.append(Issue(severity="error", code="MISSING_CUSTOMER",
-                            message="Customer is required", field="header.customer"))
+        issues.append(
+            Issue(
+                severity="error",
+                code="MISSING_CUSTOMER",
+                message="Customer is required",
+                field="header.customer",
+            )
+        )
     elif not repo.customer_exists(po.header.customer):
-        issues.append(Issue(severity="error", code="UNKNOWN_CUSTOMER",
-                            message="Customer not found in master", field="header.customer"))
+        issues.append(
+            Issue(
+                severity="error",
+                code="UNKNOWN_CUSTOMER",
+                message="Customer not found in master",
+                field="header.customer",
+            )
+        )
     if not po.header.po_number:
-        issues.append(Issue(severity="error", code="MISSING_PO_NUMBER",
-                            message="PO number is required", field="header.po_number"))
+        issues.append(
+            Issue(
+                severity="error",
+                code="MISSING_PO_NUMBER",
+                message="PO number is required",
+                field="header.po_number",
+            )
+        )
     elif repo.is_duplicate_po(po.header.po_number):
-        issues.append(Issue(severity="error", code="DUP_PO",
-                            message=f"PO {po.header.po_number} already submitted",
-                            field="header.po_number"))
+        issues.append(
+            Issue(
+                severity="error",
+                code="DUP_PO",
+                message=f"PO {po.header.po_number} already submitted",
+                field="header.po_number",
+            )
+        )
 
     for idx, li in enumerate(po.line_items):
         if li.order_quantity is None or li.order_quantity <= 0:
-            issues.append(Issue(severity="error", code="INVALID_QUANTITY",
-                                message="Order quantity must be > 0",
-                                field=f"line_items[{idx}].order_quantity"))
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="INVALID_QUANTITY",
+                    message="Order quantity must be > 0",
+                    field=f"line_items[{idx}].order_quantity",
+                )
+            )
     return issues
 
 
@@ -757,9 +781,14 @@ def check_commits(po: ExtractedPO) -> list[Issue]:
     issues: list[Issue] = []
     for idx, li in enumerate(po.line_items):
         if li.manual_commit is not None and li.manual_commit > li.warehouse_quantity:
-            issues.append(Issue(severity="error", code="COMMIT_EXCEEDS_STOCK",
-                                message="Manual commit exceeds warehouse stock",
-                                field=f"line_items[{idx}].manual_commit"))
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="COMMIT_EXCEEDS_STOCK",
+                    message="Manual commit exceeds warehouse stock",
+                    field=f"line_items[{idx}].manual_commit",
+                )
+            )
     return issues
 ```
 
@@ -801,7 +830,7 @@ def test_known_item_backfills_stock_and_commit(repo):
     issues = exception.process_exceptions(po, repo)
     li = po.line_items[0]
     assert li.warehouse_quantity == 30
-    assert li.inventory_commit == 30           # min(50, 30)
+    assert li.inventory_commit == 30  # min(50, 30)
     assert issues == []
 
 
@@ -820,8 +849,10 @@ def test_unknown_item_errors_and_zeroes(repo):
         line_items=[LineItem(item_number="ITEM-9999", order_quantity=10)],
     )
     issues = exception.process_exceptions(po, repo)
-    assert any(i.code == "UNKNOWN_ITEM" and i.severity == "error"
-               and i.message == "Not found" for i in issues)
+    assert any(
+        i.code == "UNKNOWN_ITEM" and i.severity == "error" and i.message == "Not found"
+        for i in issues
+    )
     li = po.line_items[0]
     assert li.warehouse_quantity == 0
     assert li.inventory_commit == 0
@@ -844,9 +875,14 @@ def process_exceptions(po: ExtractedPO, repo) -> list[Issue]:
     for idx, li in enumerate(po.line_items):
         item = repo.find_item(li.item_number)
         if item is None:
-            issues.append(Issue(severity="error", code="UNKNOWN_ITEM",
-                                message="Not found",
-                                field=f"line_items[{idx}].item_number"))
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="UNKNOWN_ITEM",
+                    message="Not found",
+                    field=f"line_items[{idx}].item_number",
+                )
+            )
             li.warehouse_quantity = 0
             li.inventory_commit = 0
         else:
@@ -890,20 +926,31 @@ def _po(li, **header):
 
 
 def test_derives_committed_difference_and_amounts():
-    li = LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0,
-                  warehouse_quantity=30, inventory_commit=30)
+    li = LineItem(
+        item_number="ITEM-1001",
+        order_quantity=50,
+        unit_price=2.0,
+        warehouse_quantity=30,
+        inventory_commit=30,
+    )
     order = draft.build_draft(_po(li, customer="ACME Corp", po_number="PO-1"), [])
     out = order.line_items[0]
     assert out.committed_quantity == 30
-    assert out.difference == 20                 # 50 - 30
-    assert out.line_total == 100.0              # 2.0 * 50 (by order qty)
+    assert out.difference == 20  # 50 - 30
+    assert out.line_total == 100.0  # 2.0 * 50 (by order qty)
     assert order.order_total == 100.0
     assert order.status == OrderStatus.READY_TO_SUBMIT
 
 
 def test_manual_commit_overrides_inventory_commit():
-    li = LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0,
-                  warehouse_quantity=30, inventory_commit=30, manual_commit=20)
+    li = LineItem(
+        item_number="ITEM-1001",
+        order_quantity=50,
+        unit_price=2.0,
+        warehouse_quantity=30,
+        inventory_commit=30,
+        manual_commit=20,
+    )
     order = draft.build_draft(_po(li, customer="ACME Corp", po_number="PO-1"), [])
     out = order.line_items[0]
     assert out.committed_quantity == 20
@@ -918,8 +965,9 @@ def test_error_issue_forces_needs_review():
 
 
 def test_order_total_none_when_no_prices():
-    li = LineItem(item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30,
-                  inventory_commit=30)  # no unit_price
+    li = LineItem(
+        item_number="ITEM-1001", order_quantity=50, warehouse_quantity=30, inventory_commit=30
+    )  # no unit_price
     order = draft.build_draft(_po(li, customer="ACME Corp", po_number="PO-1"), [])
     assert order.line_items[0].line_total is None
     assert order.order_total is None
@@ -943,9 +991,7 @@ def build_draft(po: ExtractedPO, issues: list[Issue]) -> OrderDraft:
         )
         li.difference = li.order_quantity - li.committed_quantity
         li.line_total = (
-            round(li.unit_price * li.order_quantity, 2)
-            if li.unit_price is not None
-            else None
+            round(li.unit_price * li.order_quantity, 2) if li.unit_price is not None else None
         )
 
     priced = [li.line_total for li in po.line_items if li.line_total is not None]
@@ -1037,7 +1083,7 @@ def test_extract_po_retries_then_raises():
     client = FlakyClient()
     with pytest.raises(ExtractionError):
         extraction.extract_po("text", client)
-    assert client.attempts == 3   # initial + 2 retries
+    assert client.attempts == 3  # initial + 2 retries
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1136,7 +1182,11 @@ def test_pipeline_produces_ready_draft(repo):
     order, steps = pipeline.run_pipeline(_pdf("PURCHASE ORDER\n..."), repo, client)
 
     assert [s["step"] for s in steps] == [
-        "intake", "extraction", "validation", "exception", "draft"
+        "intake",
+        "extraction",
+        "validation",
+        "exception",
+        "draft",
     ]
     assert order.line_items[0].warehouse_quantity == 30
     assert order.line_items[0].difference == 20
@@ -1252,10 +1302,12 @@ def teardown_module(module):
 
 
 def test_process_returns_order_and_steps():
-    setup_overrides(ExtractedPO(
-        header=POHeader(customer="ACME Corp", po_number="PO-3001"),
-        line_items=[LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0)],
-    ))
+    setup_overrides(
+        ExtractedPO(
+            header=POHeader(customer="ACME Corp", po_number="PO-3001"),
+            line_items=[LineItem(item_number="ITEM-1001", order_quantity=50, unit_price=2.0)],
+        )
+    )
     client = TestClient(app)
     resp = client.post("/api/process", files={"file": ("po.pdf", _pdf("PO"), "application/pdf")})
     assert resp.status_code == 200
@@ -1269,9 +1321,7 @@ def test_submit_overstock_blocks_release():
     client = TestClient(app)
     draft = {
         "header": {"customer": "ACME Corp", "po_number": "PO-3002"},
-        "line_items": [{
-            "item_number": "ITEM-1001", "order_quantity": 50, "manual_commit": 40
-        }],
+        "line_items": [{"item_number": "ITEM-1001", "order_quantity": 50, "manual_commit": 40}],
         "status": "ready_to_submit",
     }
     resp = client.post("/api/submit", json=draft)
@@ -1320,7 +1370,9 @@ from backend.repository import Repository
 load_dotenv()
 
 app = FastAPI(title="PO Intake Agent")
-repo = Repository(db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed"))
+repo = Repository(
+    db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed")
+)
 
 
 def get_client():
@@ -1344,8 +1396,8 @@ async def submit(order: OrderDraft):
     po = ExtractedPO(header=order.header, line_items=order.line_items)
 
     issues = validation.validate(po, repo)
-    issues += exception_agent.process_exceptions(po, repo)   # re-query stock, backfill
-    issues += validation.check_commits(po)                   # overstock guard
+    issues += exception_agent.process_exceptions(po, repo)  # re-query stock, backfill
+    issues += validation.check_commits(po)  # overstock guard
 
     rebuilt = draft.build_draft(po, issues)
     rebuilt.order_note = order.order_note
@@ -1386,6 +1438,7 @@ git commit -m "feat: FastAPI routes /api/process and /api/submit"
 
 ```python
 """Render the recorded sample texts to demo PDFs in samples/. Run: python tests/make_sample_pdfs.py"""
+
 from pathlib import Path
 
 from reportlab.pdfgen import canvas
@@ -1435,6 +1488,7 @@ DUMMY_PDF_TEXT_BYTES = None  # pipeline reads PDF; we feed a real PDF below
 def _pdf(text):
     import io
     from reportlab.pdfgen import canvas
+
     buf = io.BytesIO()
     c = canvas.Canvas(buf)
     c.drawString(50, 800, text)

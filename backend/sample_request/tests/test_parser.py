@@ -1,4 +1,5 @@
 """Tests for parser.py — Claude structured parsing of email body."""
+
 from __future__ import annotations
 
 from unittest.mock import MagicMock

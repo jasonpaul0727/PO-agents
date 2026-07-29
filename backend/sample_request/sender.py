@@ -1,4 +1,5 @@
 """Compose release-request and follow-up email bodies."""
+
 from __future__ import annotations
 
 from backend.sample_request.parser import ParsedRequest
@@ -46,7 +47,6 @@ _FOLLOWUP_TEMPLATES = (
     "Items requested:\n{items}\n\n"
     "Thanks,\n"
     "PO Intake Agent\n",
-
     # n=2: firmer ping
     "Hi Warehouse,\n\n"
     "Checking in again on the release request for {recipient} (sent {released_at}).\n"
@@ -55,7 +55,6 @@ _FOLLOWUP_TEMPLATES = (
     "Items:\n{items}\n\n"
     "Thanks,\n"
     "PO Intake Agent\n",
-
     # n>=3: escalation
     "Hi Warehouse,\n\n"
     "This is a final automated follow-up on the sample release request for\n"

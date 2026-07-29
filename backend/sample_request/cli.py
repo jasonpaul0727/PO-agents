@@ -6,14 +6,15 @@ The `tick` subcommand is the cron entry point. It composes:
   3. check_shipments (Task 12)
   4. send_followups  (Task 13)
 """
+
 from __future__ import annotations
 
 import argparse
 import sys
 import time
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Callable, TypeVar
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import TypeVar
 
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel
@@ -53,11 +54,11 @@ def _retry(
     for attempt in range(retries):
         try:
             return call()
-        except Exception as exc:                     # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             if not _is_transient(exc):
                 raise
             last_exc = exc
-            sleep_fn(base * (4 ** attempt))          # 1s, 4s, 16s
+            sleep_fn(base * (4**attempt))  # 1s, 4s, 16s
     raise TransientError(str(last_exc)) from last_exc
 
 
@@ -73,24 +74,32 @@ class TickResult(BaseModel):
     detected_sent: int = 0
     shipped: int = 0
     followups: int = 0
-    flagged: int = 0                       # new — used by agent mode
+    flagged: int = 0  # new — used by agent mode
     errors: int = 0
     outcome: str = "ok"
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _iso(dt: datetime) -> str:
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # ---- ingest step ----------------------------------------------------------
 
+
 def _record_pending_message_error(
-    cfg: Config, gmail, state: dict, log, msg, *,
-    step: str, exc: Exception, raw_excerpt: str | None,
+    cfg: Config,
+    gmail,
+    state: dict,
+    log,
+    msg,
+    *,
+    step: str,
+    exc: Exception,
+    raw_excerpt: str | None,
 ) -> None:
     """Record a per-message error for a request that has not yet been
     added to state (i.e. failed during ingest before `add_request`).
@@ -122,8 +131,7 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
     errors = 0
     for msg in msgs:
         existing = next(
-            (r for r in state["requests"]
-             if r.get("original_message_id") == msg.message_id),
+            (r for r in state["requests"] if r.get("original_message_id") == msg.message_id),
             None,
         )
         if existing is not None:
@@ -133,7 +141,9 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             )
             if not dry_run:
                 gmail.relabel(
-                    msg.message_id, remove=[LABEL_PENDING], add=[LABEL_DRAFT],
+                    msg.message_id,
+                    remove=[LABEL_PENDING],
+                    add=[LABEL_DRAFT],
                 )
             continue
 
@@ -150,10 +160,14 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
 
         try:
             parsed = parser_fn(msg.body, msg.subject)
-        except Exception as exc:                     # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             _record_pending_message_error(
-                cfg, gmail, state, log, msg,
+                cfg,
+                gmail,
+                state,
+                log,
+                msg,
                 step="parser",
                 exc=exc,
                 raw_excerpt=msg.body,
@@ -175,16 +189,22 @@ def _ingest(cfg: Config, gmail, parser_fn, state: dict, log, *, dry_run: bool) -
             continue
 
         try:
-            draft_id = _retry(lambda: gmail.create_draft(
-                to=cfg.warehouse_email,
-                subject=subject,
-                body=body,
-                in_reply_to=None,
-            ))
-        except Exception as exc:                     # noqa: BLE001
+            draft_id = _retry(
+                lambda: gmail.create_draft(
+                    to=cfg.warehouse_email,
+                    subject=subject,
+                    body=body,
+                    in_reply_to=None,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             _record_pending_message_error(
-                cfg, gmail, state, log, msg,
+                cfg,
+                gmail,
+                state,
+                log,
+                msg,
                 step="create_draft",
                 exc=exc,
                 raw_excerpt=None,
@@ -234,8 +254,7 @@ def _detect_sent(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> int:
         # "Sample Request 1 – Food Order"), so require the exact draft
         # subject incl. the recipient suffix (see sender.build_release_email).
         expected_subject = (
-            f"Release Request: {req['subject']}"
-            f" - {(req.get('parsed') or {}).get('recipient', '')}"
+            f"Release Request: {req['subject']} - {(req.get('parsed') or {}).get('recipient', '')}"
         )
         sent = [m for m in sent if m.subject == expected_subject]
         if not sent:
@@ -322,7 +341,9 @@ def _check_shipments(cfg: Config, gmail, state: dict, log, *, dry_run: bool) -> 
     return count
 
 
-def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn) -> tuple[int, int]:
+def _send_followups(
+    cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_fn
+) -> tuple[int, int]:
     """Returns (followups_sent, errors)."""
     count = 0
     errors = 0
@@ -339,6 +360,7 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             continue
         n_th = len(req.get("follow_ups", [])) + 1
         from backend.sample_request.sender import build_followup_email
+
         body = build_followup_email(req, n_th)
         if dry_run:
             log.info(
@@ -352,12 +374,14 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             count += 1
             continue
         try:
-            new_msg_id = _retry(lambda: gmail.reply_in_thread(
-                warehouse_thread, body, to=cfg.warehouse_email))
-        except Exception as exc:                     # noqa: BLE001
+            new_msg_id = _retry(
+                lambda: gmail.reply_in_thread(warehouse_thread, body, to=cfg.warehouse_email)
+            )
+        except Exception as exc:  # noqa: BLE001
             errors += 1
             n = S.append_tick_error(
-                state, req["thread_id"],
+                state,
+                req["thread_id"],
                 step="send_followups",
                 error_class=exc.__class__.__name__,
                 message=str(exc)[:500],
@@ -372,7 +396,9 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
             )
             if n >= 3:
                 gmail.relabel(
-                    req["original_message_id"], remove=[], add=[LABEL_ATTENTION],
+                    req["original_message_id"],
+                    remove=[],
+                    add=[LABEL_ATTENTION],
                 )
                 log.warning(
                     "needs-attention label added",
@@ -396,6 +422,7 @@ def _send_followups(cfg: Config, gmail, state: dict, log, *, dry_run: bool, now_
 
 # ---- run_tick orchestrator ------------------------------------------------
 
+
 def run_tick(
     cfg: Config,
     *,
@@ -411,7 +438,8 @@ def run_tick(
 
     state_path = (
         cfg.state_file.with_suffix(cfg.state_file.suffix + f".dryrun.{tick_id}")
-        if dry_run else cfg.state_file
+        if dry_run
+        else cfg.state_file
     )
     state = S.load_state(cfg.state_file)
     result = TickResult()
@@ -425,7 +453,12 @@ def run_tick(
         result.shipped = _check_shipments(cfg, gmail, state, log, dry_run=dry_run)
 
         followups, fu_errs = _send_followups(
-            cfg, gmail, state, log, dry_run=dry_run, now_fn=now_fn,
+            cfg,
+            gmail,
+            state,
+            log,
+            dry_run=dry_run,
+            now_fn=now_fn,
         )
         result.followups = followups
         result.errors += fu_errs
@@ -449,6 +482,7 @@ def run_tick(
 
 # ---- CLI entry ------------------------------------------------------------
 
+
 def _cmd_tick(args: argparse.Namespace) -> int:
     cfg = load_config()
     from backend.sample_request.gmail_client import GmailClient
@@ -456,12 +490,15 @@ def _cmd_tick(args: argparse.Namespace) -> int:
     gmail = GmailClient(cfg.token_path, cfg.credentials_path)
 
     import anthropic
+
     ant = anthropic.Anthropic(api_key=cfg.anthropic_api_key)
 
     if args.agent:
         from backend.sample_request.agent import run_agent_tick
+
         result = run_agent_tick(cfg, gmail=gmail, ant_client=ant)
     else:
+
         def parser_fn(body: str, subject: str) -> ParsedRequest:
             return parse_request_body(body, subject, client=ant, model=cfg.po_model)
 
@@ -474,8 +511,7 @@ def _render_status(state: dict) -> str:
     requests = state.get("requests", [])
     meta = state.get("meta", {})
     header = (
-        f"last tick: {meta.get('last_tick_at') or 'never'} "
-        f"({meta.get('last_tick_outcome') or '-'})"
+        f"last tick: {meta.get('last_tick_at') or 'never'} ({meta.get('last_tick_outcome') or '-'})"
     )
     if not requests:
         return f"{header}\nNo sample requests on file.\n"
@@ -488,9 +524,9 @@ def _render_status(state: dict) -> str:
     for r in requests:
         parsed = r.get("parsed") or {}
         lines.append(
-            f"{r.get('thread_id','')!s:<22} "
-            f"{r.get('status','')!s:<14} "
-            f"{parsed.get('recipient','')!s:<20} "
+            f"{r.get('thread_id', '')!s:<22} "
+            f"{r.get('status', '')!s:<14} "
+            f"{parsed.get('recipient', '')!s:<20} "
             f"{r.get('released_at') or '-':<22} "
             f"follow-ups: {len(r.get('follow_ups') or [])!s:<3}  "
             f"errors: {len(r.get('tick_errors') or [])}"
@@ -510,7 +546,7 @@ def _cmd_init(args: argparse.Namespace) -> int:
     if cfg.state_file.exists() and not args.force:
         print(f"state file already exists at {cfg.state_file} (use --force)", file=sys.stderr)
         return 1
-    S.save_state(cfg.state_file, S._empty_state())     # noqa: SLF001
+    S.save_state(cfg.state_file, S._empty_state())  # noqa: SLF001
     print(f"initialized empty state file at {cfg.state_file}")
     return 0
 
@@ -523,7 +559,8 @@ def _build_parser() -> argparse.ArgumentParser:
     grp = sp.add_mutually_exclusive_group()
     grp.add_argument("--dry-run", action="store_true")
     grp.add_argument(
-        "--agent", action="store_true",
+        "--agent",
+        action="store_true",
         help="Run in tool-using agent mode instead of the hardcoded workflow",
     )
     sp.set_defaults(func=_cmd_tick)
@@ -543,5 +580,5 @@ def main(argv: list[str] | None = None) -> int:
     return args.func(args)
 
 
-if __name__ == "__main__":                                # pragma: no cover
+if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(main())

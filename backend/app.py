@@ -1,6 +1,5 @@
 import io
 import os
-
 from pathlib import Path
 
 import anthropic
@@ -23,7 +22,9 @@ load_dotenv()
 # require_demo_auth is a no-op unless DEMO_USERNAME/DEMO_PASSWORD are set (public
 # deploy) — local dev and tests are unaffected.
 app = FastAPI(title="PO Intake Agent", dependencies=[Depends(require_demo_auth)])
-repo = Repository(db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed"))
+repo = Repository(
+    db_path=os.getenv("PO_DB", "po.db"), seed_dir=os.getenv("PO_SEED", "backend/seed")
+)
 
 FRONTEND = Path(__file__).resolve().parents[1] / "frontend"
 app.mount("/static", StaticFiles(directory=str(FRONTEND)), name="static")
@@ -89,8 +90,12 @@ def check_item(item_number: str, order_quantity: int | None = None):
     """
     item = repo.find_item(item_number.strip())
     if item is None:
-        return {"found": False, "item_number": item_number,
-                "warehouse_quantity": 0, "inventory_commit": 0}
+        return {
+            "found": False,
+            "item_number": item_number,
+            "warehouse_quantity": 0,
+            "inventory_commit": 0,
+        }
     commit = None
     if order_quantity is not None:
         commit = min(order_quantity, item.warehouse_quantity)
@@ -153,8 +158,8 @@ async def submit(order: OrderDraft):
     po = ExtractedPO(header=order.header, line_items=order.line_items)
 
     issues = validation.validate(po, repo)
-    issues += exception_agent.process_exceptions(po, repo)   # re-query stock, backfill
-    issues += validation.check_commits(po)                   # overstock guard
+    issues += exception_agent.process_exceptions(po, repo)  # re-query stock, backfill
+    issues += validation.check_commits(po)  # overstock guard
 
     rebuilt = draft.build_draft(po, issues)
     rebuilt.order_note = order.order_note

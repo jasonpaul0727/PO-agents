@@ -1,4 +1,5 @@
 """Test for the status subcommand."""
+
 from __future__ import annotations
 
 from backend.sample_request import state as S
@@ -14,8 +15,11 @@ def test_render_status_empty_state(tmp_path):
 def test_render_status_with_requests(tmp_path):
     state = S.load_state(tmp_path / "s.json")
     S.add_request(
-        state, thread_id="T1", message_id="M1",
-        subject="Sample request — A", from_="c@example.com",
+        state,
+        thread_id="T1",
+        message_id="M1",
+        subject="Sample request — A",
+        from_="c@example.com",
         received_at="2026-06-29T09:00:00Z",
         parsed={"recipient": "Mike", "address": "1 St", "items": []},
     )

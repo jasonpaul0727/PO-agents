@@ -1,7 +1,6 @@
 """Tests for sender.py — email body builders."""
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from backend.sample_request.parser import ParsedItem, ParsedRequest
 from backend.sample_request.sender import build_followup_email, build_release_email
@@ -38,7 +37,7 @@ def test_build_release_body_has_recipient_address_items_and_ups_ask():
     assert "Item #190 | Kid snack salmon | Qty: 3 case" in body
     assert "Widget | Qty: 1 each" in body
     assert "UPS tracking number" in body
-    assert "yanxiabu001@gmail.com" in body          # "on behalf of"
+    assert "yanxiabu001@gmail.com" in body  # "on behalf of"
 
 
 def test_followup_text_differs_by_index():
